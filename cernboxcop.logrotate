@@ -1,0 +1,9 @@
+/var/log/cernboxcop/cernboxcop.log {
+    daily
+    rotate 365
+    copytruncate
+    delaycompress
+    compress
+    notifempty
+    missingok
+}
