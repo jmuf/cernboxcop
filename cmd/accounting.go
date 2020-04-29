@@ -87,8 +87,8 @@ var accountingReportCmd = &cobra.Command{
 
 		fmt.Fprintln(os.Stderr)
 
-		files := []string{} // all files that are going to be generated
 		file := path.Join(out, "accounting.txt")
+		files := []string{file} // all files that are going to be generated
 		computeBasic(infos, file, factorPerByte)
 		fmt.Printf("%s\n", file)
 		if charge {
