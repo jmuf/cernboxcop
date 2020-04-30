@@ -61,7 +61,7 @@ var accountingReportCmd = &cobra.Command{
 		asYesterday, _ := cmd.Flags().GetBool("as-yesterday")
 		out, _ := cmd.Flags().GetString("out")
 		factorPerTB, _ := cmd.Flags().GetFloat64("cost")
-		var factorPerByte float64 = factorPerTB / float64(1000000000)
+		var factorPerByte float64 = factorPerTB / float64(1000000000000)
 
 		infos := getEOSProjects(head)
 		if userAlso {
