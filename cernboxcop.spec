@@ -4,7 +4,7 @@
 
 Name: cernboxcop
 Summary: CERNBox cop helps the ops team to be more efficient
-Version: 1.0.0
+Version: 1.0.1
 Release: 1%{?dist}
 License: AGPLv3
 BuildRoot: %{_tmppath}/%{name}-buildroot
@@ -51,6 +51,8 @@ rm -rf %buildroot/
 
 
 %changelog
+* Thu Apr 30 2020 Hugo Gonzalez Labrador <hugo.gonzalez.labrador@cern.ch> 1.0.1
+- Fix virtual cost reporting to use price per terabyte
 * Wed Apr 29 2020 Hugo Gonzalez Labrador <hugo.gonzalez.labrador@cern.ch> 1.0.0
 - First version with accounting support
 
