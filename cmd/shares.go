@@ -29,10 +29,10 @@ var shareListCmd = &cobra.Command{
 	Short: "List all the shares",
 	Run: func(cmd *cobra.Command, args []string) {
 		print := func(shares []*dbShare) {
-			cols := []string{"ID", "OWNER", "TYPE", "SHARE_WITH", "PERMISSION", "URL"}
+			cols := []string{"ID", "FILEID", "OWNER", "TYPE", "SHARE_WITH", "PERMISSION", "URL"}
 			rows := [][]string{}
 			for _, s := range shares {
-				row := []string{fmt.Sprintf("%d", s.ID), s.UIDOwner, s.HumanType(), s.HumanShareWith(), s.HumanPerm(), s.PublicLink()}
+				row := []string{fmt.Sprintf("%d", s.ID), s.FileID(), s.UIDOwner, s.HumanType(), s.HumanShareWith(), s.HumanPerm(), s.PublicLink()}
 				rows = append(rows, row)
 			}
 			pretty(cols, rows)
@@ -104,6 +104,14 @@ type dbShare struct {
 	FileTarget  string
 	State       int
 	Token       string
+}
+
+func (s *dbShare) FileID() string {
+	v := fmt.Sprintf("%s:%s", s.Prefix, s.ItemSource)
+	// replace internal namespacing for one user friendly.
+	// newproject-c => eosproject-c
+	v = strings.ReplaceAll(v, "new", "eos")
+	return v
 }
 
 func (s *dbShare) PublicLink() string {
