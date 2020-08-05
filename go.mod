@@ -3,7 +3,7 @@ module github.com/cernbox/cernboxcop
 go 1.13
 
 require (
-	github.com/cs3org/reva v0.1.1-0.20200419151655-587a7920a992
+	github.com/cs3org/reva v1.0.1-0.20200804150337-95e8788a1093
 	github.com/dustin/go-humanize v1.0.0
 	github.com/go-redis/redis v6.15.7+incompatible
 	github.com/go-sql-driver/mysql v1.5.0

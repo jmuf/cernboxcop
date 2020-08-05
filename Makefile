@@ -5,6 +5,9 @@ VERSION  = $(shell awk '$$1 == "Version:"  { print $$2 }' $(SPECFILE) )
 RELEASE  = $(shell awk '$$1 == "Release:"  { print $$2 }' $(SPECFILE) )
 rpmbuild = ${shell pwd}/rpmbuild
 
+default:
+	go build
+
 clean:
 	@rm -rf $(PACKAGE)-$(VERSION)
 	@rm -rf $(rpmbuild)
