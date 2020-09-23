@@ -4,7 +4,16 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"strings"
+
 	"github.com/cs3org/reva/pkg/appctx"
 	"github.com/cs3org/reva/pkg/eosclient"
 	"github.com/go-redis/redis"
@@ -15,10 +24,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/ldap.v3"
-	"io"
-	"os"
-	"path"
-	"strings"
 )
 
 var (
@@ -114,6 +119,39 @@ func getLDAP() *ldap.Conn {
 		er(err)
 	}
 	return l
+}
+
+func getGrappaURLAndToken() (string, string, error) {
+	params := url.Values{
+		"grant_type": {"client_credentials"},
+		"audience":   {viper.GetString("grappa_target_api")},
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", viper.GetString("oidc_token_endpoint"), strings.NewReader(params.Encode()))
+	if err != nil {
+		return "", "", err
+	}
+	req.SetBasicAuth(viper.GetString("grappa_client_id"), viper.GetString("grappa_client_secret"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
+
+	res, err := client.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return "", "", err
+	}
+
+	var result map[string]interface{}
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return "", "", err
+	}
+	return viper.GetString("grappa_api_url"), result["access_token"].(string), nil
 }
 
 func getEOS(mgm string) *eosclient.Client {

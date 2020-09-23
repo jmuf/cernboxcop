@@ -2,19 +2,25 @@ package cmd
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/go-redis/redis"
 	"github.com/spf13/cobra"
 	"gopkg.in/ldap.v3"
-	"strconv"
-	"strings"
 )
 
 func init() {
 	rootCmd.AddCommand(userCmd)
 	userCmd.AddCommand(userCheckCmd)
 	userCmd.AddCommand(userGroupsCmd)
+	userCmd.AddCommand(userListInactiveCmd)
 }
 
 var userCmd = &cobra.Command{
@@ -43,16 +49,6 @@ var userCheckCmd = &cobra.Command{
 	},
 }
 
-var prettyUser = func(userInfos ...*userInfo) {
-	cols := []string{"Account", "Type", "Name", "Department", "Group", "Section", "Mail", "Phone"}
-	rows := make([][]string, 0, len(userInfos))
-	for _, ui := range userInfos {
-		row := []string{ui.Account, ui.AccountType, ui.Name, ui.Department, ui.Group, ui.Section, ui.Mail, ui.Phone}
-		rows = append(rows, row)
-	}
-	pretty(cols, rows)
-}
-
 var userGroupsCmd = &cobra.Command{
 	Use:   "groups <username>",
 	Short: "Retrieves the groups the the user is member of",
@@ -68,6 +64,54 @@ var userGroupsCmd = &cobra.Command{
 			fmt.Println(g)
 		}
 	},
+}
+
+var userListInactiveCmd = &cobra.Command{
+	Use:   "list-inactive <days>",
+	Short: "Lists the user accounts which have been inactive for more than a given number of days",
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) == 0 {
+			exit(cmd)
+		}
+
+		days, err := strconv.Atoi(strings.TrimSpace(args[0]))
+		if err != nil {
+			log.Err(err).Msgf("value for days is not an integer: %s", args[0])
+		}
+
+		apiEP, token, err := getGrappaURLAndToken()
+		if err != nil {
+			log.Err(err).Msg("error getting token")
+		}
+
+		info, err := getInactiveUsers(apiEP, token, days)
+		if err != nil {
+			log.Err(err).Msg("error getting token")
+		}
+
+		prettyUser(info...)
+
+	},
+}
+
+func prettyUser(userInfos ...*userInfo) {
+	cols := []string{"Account", "Type", "Name", "Department", "Group", "Section", "Mail", "Phone"}
+	rows := make([][]string, 0, len(userInfos))
+	for _, ui := range userInfos {
+		row := []string{ui.Account, ui.AccountType, ui.Name, ui.Department, ui.Group, ui.Section, ui.Mail, ui.Phone}
+		rows = append(rows, row)
+	}
+	pretty(cols, rows)
+}
+
+func prettyInactiveUsers(userInfos ...*userInfo) {
+	cols := []string{"Account", "Type", "Name", "Department", "Group", "Section", "Mail", "Phone", "Inactive since"}
+	rows := make([][]string, 0, len(userInfos))
+	for _, ui := range userInfos {
+		row := []string{ui.Account, ui.AccountType, ui.Name, ui.Department, ui.Group, ui.Section, ui.Mail, ui.Phone, ui.BlockingTime.String()}
+		rows = append(rows, row)
+	}
+	pretty(cols, rows)
 }
 
 func getHomePath(username string) string {
@@ -262,6 +306,87 @@ func getUserGroups(uid string) []string {
 	return gids
 }
 
+func getInactiveUsers(apiEP, token string, days int) ([]*userInfo, error) {
+	url := apiEP + "/Identity?filter=activeUser:false&field=upn&field=primaryAccountEmail&field=displayName&field=type&field=cernGroup&field=cernDepartment&field=cernSection&field=uid&field=gid"
+	users := []*userInfo{}
+	for {
+		u, nextPage, err := getInactiveUsersByPage(url, token)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u...)
+		url = apiEP + nextPage
+		if nextPage == "" {
+			break
+		}
+	}
+	return filterUsersByDate(users, days)
+}
+
+func getInactiveUsersByPage(url string, token string) ([]*userInfo, string, error) {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var result map[string]interface{}
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return nil, "", err
+	}
+	userData, ok := result["data"].([]interface{})
+	if !ok {
+		return nil, "", errors.New("rest: error in type assertion")
+	}
+
+	users := []*userInfo{}
+	for _, u := range userData {
+		info, ok := u.(map[string]interface{})
+		if !ok {
+			return nil, "", errors.New("rest: error in type assertion")
+		}
+		users = append(users, &userInfo{
+			Account:     info["upn"].(string),
+			Name:        info["displayName"].(string),
+			Mail:        info["primaryAccountEmail"].(string),
+			UID:         info["uid"].(string),
+			GID:         info["gid"].(string),
+			AccountType: info["type"].(string),
+			Department:  info["cernDepartment"].(string),
+			Group:       info["cernGroup"].(string),
+			Section:     info["cernSection"].(string),
+		})
+	}
+
+	var nextPage string
+	if pagination, ok := result["pagination"].(map[string]interface{}); ok {
+		if links, ok := pagination["links"].(map[string]string); ok {
+			nextPage = links["next"]
+		}
+	}
+
+	return users, nextPage, nil
+
+}
+
+func filterUsersByDate(users []*userInfo, days int) ([]*userInfo, error) {
+	// TODO: Add filters once bug in grappa is fixed
+	return users, nil
+}
+
 func newUserInfo() *userInfo {
 	return &userInfo{
 		AccountOwner: &userInfo{},
@@ -280,6 +405,7 @@ type userInfo struct {
 	AccountOwner   *userInfo
 	AccountOwnerDN string
 	Phone          string
+	BlockingTime   time.Time
 }
 
 func (ui *userInfo) accountTypeHuman() string {

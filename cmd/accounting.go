@@ -4,14 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cs3org/reva/pkg/eosclient"
-	"github.com/dustin/go-humanize"
-	"github.com/leekchan/accounting"
-	"github.com/mitchellh/mapstructure"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"github.com/tj/go-spin"
-	"gopkg.in/ldap.v3"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -23,6 +15,15 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cs3org/reva/pkg/eosclient"
+	"github.com/dustin/go-humanize"
+	"github.com/leekchan/accounting"
+	"github.com/mitchellh/mapstructure"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/tj/go-spin"
+	"gopkg.in/ldap.v3"
 )
 
 func init() {
@@ -175,7 +176,7 @@ var pushData = func(endpoint, file string) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
 
-		log.Error().Msgf("error pushing data to:%s err:%+v", endpoint, file, err)
+		log.Error().Msgf("error pushing data to:%s file:%s err:%+v", endpoint, file, err)
 		er(err)
 	}
 	req, err := http.NewRequest("POST", endpoint, strings.NewReader(string(data)))
