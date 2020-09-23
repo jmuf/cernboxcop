@@ -307,7 +307,7 @@ func getUserGroups(uid string) []string {
 }
 
 func getInactiveUsers(apiEP, token string, days int) ([]*userInfo, error) {
-	url := apiEP + "/Identity?filter=activeUser:false&field=upn&field=primaryAccountEmail&field=displayName&field=type&field=cernGroup&field=cernDepartment&field=cernSection&field=uid&field=gid"
+	url := apiEP + "/api/v1.0/Identity?filter=activeUser:false&field=upn&field=primaryAccountEmail&field=displayName&field=type&field=cernGroup&field=cernDepartment&field=cernSection&field=uid&field=gid"
 	users := []*userInfo{}
 	for {
 		u, nextPage, err := getInactiveUsersByPage(url, token)
