@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-const FE = "cernbox-eos"
+const FE = "CERNBox"
 
 func init() {
 	rootCmd.AddCommand(accountingCmd)
