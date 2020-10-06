@@ -25,6 +25,8 @@ import (
 	"time"
 )
 
+const FE = "cernbox-eos"
+
 func init() {
 	rootCmd.AddCommand(accountingCmd)
 	accountingCmd.AddCommand(accountingReportCmd)
@@ -112,13 +114,13 @@ var accountingReportCmd = &cobra.Command{
 			computeAggregateReceiverJSON(infos, file, asYesterday)
 			fmt.Printf("%s\n", file)
 
-			//  curl -X POST -H "Content-Type: application/json" -H "API-Key:xyz"  https://acc-receiver-dev.cern.ch/v2/fe/cernbox-eos
+			//  curl -X POST -H "Content-Type: application/json" -H "API-Key:xyz"  https://acc-receiver-dev.cern.ch/v2/fe/cernbox
 			if pushProd {
-				url := "https://acc-receiver.cern.ch/v2/fe/cernbox-eos"
+				url := "https://acc-receiver.cern.ch/v2/fe/" + FE
 				pushData(url, file)
 				fmt.Println("Data pushed to " + url)
 			} else if pushDev {
-				url := "https://acc-receiver-dev.cern.ch/v2/fe/cernbox-eos"
+				url := "https://acc-receiver-dev.cern.ch/v2/fe/" + FE
 				pushData(url, file)
 				fmt.Println("Data pushed to " + url)
 			}
@@ -252,7 +254,7 @@ var computeAggregateReceiverJSON = func(infos []*projectInfo, file string, asYes
 				MessageFormatVersion: 2,
 				ChargeGroup:          group,
 				ChargeRole:           role,
-				FE:                   "cernbox-eos",
+				FE:                   FE,
 			}
 			payload = append(payload, j)
 		}
