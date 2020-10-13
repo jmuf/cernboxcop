@@ -231,33 +231,27 @@ var computeAggregateReceiverJSON = func(infos []*projectInfo, file string, asYes
 
 	}
 
-	payload := []*accReceiverJSON{}
+	payload_data := []*accReceiverJSON_v3_data{}
 	for group, roles := range aggregate {
 		for role, quota := range roles {
-			/*
-				DiskUsage            int
-				DiskQuota            int
-				Date                 string
-				MessageFormatVersion int
-				WallClockHours       int
-				Dedicated            bool
-				ChargeGroup          string
-				ChargeRole           string
-				CPUHours             int
-				FE                   string
-			*/
 
-			j := &accReceiverJSON{
-				DiskUsage:            quota.UsedBytes,
-				DiskQuota:            quota.AvailableBytes,
-				Date:                 timeNow(asYesterday).Format("2006-01-02"),
-				MessageFormatVersion: 2,
-				ChargeGroup:          group,
-				ChargeRole:           role,
-				FE:                   FE,
+			j := &accReceiverJSON_v3_data{
+				ToChargeGroup:        group,
+				MetricValue:          quota.UsedBytes,
+				ToChargeRole:         role,
 			}
-			payload = append(payload, j)
+			payload_data = append(payload_data, j)
 		}
+	}
+	payload := &accReceiverJSON_v3_header{
+		MessageFormatVersion: 3,
+		FromChargeGroup:      FE,
+		MetricName:           "UsedBytes",
+		TimePeriod:           "day",
+		TimeStamp:            timeNow(asYesterday).Format("2006-01-02"),
+		TimeAggregate:        "avg",
+		AccountingDoc:        "CERNBox accounts on actually-used space in EOS",
+		data:                 payload_data,
 	}
 
 	data, err := json.Marshal(payload)
@@ -916,28 +910,19 @@ func getQuotas(mgms ...string) map[string]*eosclient.QuotaInfo {
 	return quotas
 }
 
-/*
-MessageFormatVersion	int	2
-Date	string	YYYY-MM-DD
-FE	string
-ChargeGroup	string
-ChargeRole	string
-WallClockHours	float	X >= 0
-CPUHours	float	X >= 0
-DiskQuota	float	X >= 0
-DiskUsage	float	X >= 0
-Prenormalised	boolean	false by default
-Dedicated       boolean false by default
-*/
-type accReceiverJSON struct {
-	DiskUsage            int
-	DiskQuota            int
-	Date                 string
+/* Format: see https://accounting-docs.web.cern.ch/services/v3/accounting/ */
+type accReceiverJSON_v3_header struct {
 	MessageFormatVersion int
-	WallClockHours       int
-	Dedicated            bool
-	ChargeGroup          string
-	ChargeRole           string
-	CPUHours             int
-	FE                   string
+	FromChargeGroup      string
+        MetricName           string
+        TimePeriod           string
+        TimeStamp            string
+	TimeAggregate        string
+        AccountingDoc        string
+        data                 []*accReceiverJSON_v3_data
+}
+type accReceiverJSON_v3_data struct {
+	ToChargeGroup        string
+        MetricValue          int
+	ToChargeRole         string
 }
