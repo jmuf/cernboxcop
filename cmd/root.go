@@ -5,6 +5,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
+	"os"
+	"path"
+	"strings"
+
 	"github.com/cs3org/reva/pkg/appctx"
 	"github.com/cs3org/reva/pkg/eosclient"
 	"github.com/go-redis/redis"
@@ -15,10 +20,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/ldap.v3"
-	"io"
-	"os"
-	"path"
-	"strings"
 )
 
 var (
@@ -129,6 +130,14 @@ func getEOSForUser(username string) *eosclient.Client {
 	letter := string(username[0])
 	mgm := fmt.Sprintf("root://eoshome-%s.cern.ch", letter)
 	return getEOS(mgm)
+}
+
+func getProbeUser() (string, string) {
+	return viper.GetString("probe_username"), viper.GetString("probe_password")
+}
+
+func getProbeEOSInstances() []string {
+	return viper.GetStringSlice("probe_eos_instances")
 }
 
 func saveWith(file string, data []byte) {

@@ -4,11 +4,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/go-redis/redis"
 	"github.com/spf13/cobra"
 	"gopkg.in/ldap.v3"
-	"strconv"
-	"strings"
 )
 
 func init() {
