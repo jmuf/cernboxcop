@@ -114,13 +114,13 @@ var accountingReportCmd = &cobra.Command{
 			computeAggregateReceiverJSON(infos, file, asYesterday)
 			fmt.Printf("%s\n", file)
 
-			//  curl -X POST -H "Content-Type: application/json" -H "API-Key:xyz"  https://acc-receiver-dev.cern.ch/v2/fe/cernbox
+			//  curl -X POST -H "Content-Type: application/json" -H "API-Key:xyz"  https://acc-receiver-dev.cern.ch/v3/fe
 			if pushProd {
-				url := "https://acc-receiver.cern.ch/v2/fe/" + FE
+				url := "https://acc-receiver.cern.ch/v3/fe"
 				pushData(url, file)
 				fmt.Println("Data pushed to " + url)
 			} else if pushDev {
-				url := "https://acc-receiver-dev.cern.ch/v2/fe/" + FE
+				url := "https://acc-receiver-dev.cern.ch/v3/fe"
 				pushData(url, file)
 				fmt.Println("Data pushed to " + url)
 			}
@@ -236,9 +236,9 @@ var computeAggregateReceiverJSON = func(infos []*projectInfo, file string, asYes
 		for role, quota := range roles {
 
 			j := &accReceiverJSON_v3_data{
-				ToChargeGroup:        group,
-				MetricValue:          quota.UsedBytes,
-				ToChargeRole:         role,
+				ToChargeGroup: group,
+				MetricValue:   quota.UsedBytes,
+				ToChargeRole:  role,
 			}
 			payload_data = append(payload_data, j)
 		}
@@ -251,7 +251,7 @@ var computeAggregateReceiverJSON = func(infos []*projectInfo, file string, asYes
 		TimeStamp:            timeNow(asYesterday).Format("2006-01-02"),
 		TimeAggregate:        "avg",
 		AccountingDoc:        "CERNBox accounts on actually-used space in EOS",
-		data:                 payload_data,
+		Data:                 payload_data,
 	}
 
 	data, err := json.Marshal(payload)
@@ -914,15 +914,15 @@ func getQuotas(mgms ...string) map[string]*eosclient.QuotaInfo {
 type accReceiverJSON_v3_header struct {
 	MessageFormatVersion int
 	FromChargeGroup      string
-        MetricName           string
-        TimePeriod           string
-        TimeStamp            string
+	MetricName           string
+	TimePeriod           string
+	TimeStamp            string
 	TimeAggregate        string
-        AccountingDoc        string
-        data                 []*accReceiverJSON_v3_data
+	AccountingDoc        string
+	Data                 []*accReceiverJSON_v3_data `json:"data"`
 }
 type accReceiverJSON_v3_data struct {
-	ToChargeGroup        string
-        MetricValue          int
-	ToChargeRole         string
+	ToChargeGroup string
+	MetricValue   int
+	ToChargeRole  string
 }
