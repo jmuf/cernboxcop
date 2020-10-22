@@ -31,6 +31,10 @@ var availabilityCmd = &cobra.Command{
 		text := "dummy text with time " + time.Now().String()
 
 		user, password := getProbeUser()
+		if user == "" || password == "" {
+			er("please set probe_user and probe_password in the config")
+		}
+
 		serverURL := fmt.Sprintf("https://cernbox.cern.ch/cernbox/desktop/remote.php/webdav/eos/user/%s/%s/sls", user[:1], user)
 		httpClient := &http.Client{}
 
