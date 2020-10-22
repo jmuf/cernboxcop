@@ -114,13 +114,13 @@ var accountingReportCmd = &cobra.Command{
 			computeAggregateReceiverJSON(infos, file, asYesterday)
 			fmt.Printf("%s\n", file)
 
-			//  curl -X POST -H "Content-Type: application/json" -H "API-Key:xyz"  https://acc-receiver-dev.cern.ch/v2/fe/cernbox
+			//  curl -X POST -H "Content-Type: application/json" -H "API-Key:xyz"  https://acc-receiver-dev.cern.ch/v3/fe
 			if pushProd {
-				url := "https://acc-receiver.cern.ch/v2/fe/" + FE
+				url := "https://acc-receiver.cern.ch/v3/fe"
 				pushData(url, file)
 				fmt.Println("Data pushed to " + url)
 			} else if pushDev {
-				url := "https://acc-receiver-dev.cern.ch/v2/fe/" + FE
+				url := "https://acc-receiver-dev.cern.ch/v3/fe"
 				pushData(url, file)
 				fmt.Println("Data pushed to " + url)
 			}
@@ -231,33 +231,27 @@ var computeAggregateReceiverJSON = func(infos []*projectInfo, file string, asYes
 
 	}
 
-	payload := []*accReceiverJSON{}
+	payload_data := []*accReceiverJSON_v3_data{}
 	for group, roles := range aggregate {
 		for role, quota := range roles {
-			/*
-				DiskUsage            int
-				DiskQuota            int
-				Date                 string
-				MessageFormatVersion int
-				WallClockHours       int
-				Dedicated            bool
-				ChargeGroup          string
-				ChargeRole           string
-				CPUHours             int
-				FE                   string
-			*/
 
-			j := &accReceiverJSON{
-				DiskUsage:            quota.UsedBytes,
-				DiskQuota:            quota.AvailableBytes,
-				Date:                 timeNow(asYesterday).Format("2006-01-02"),
-				MessageFormatVersion: 2,
-				ChargeGroup:          group,
-				ChargeRole:           role,
-				FE:                   FE,
+			j := &accReceiverJSON_v3_data{
+				ToChargeGroup: group,
+				MetricValue:   quota.UsedBytes,
+				ToChargeRole:  role,
 			}
-			payload = append(payload, j)
+			payload_data = append(payload_data, j)
 		}
+	}
+	payload := &accReceiverJSON_v3_header{
+		MessageFormatVersion: 3,
+		FromChargeGroup:      FE,
+		MetricName:           "UsedBytes",
+		TimePeriod:           "day",
+		TimeStamp:            timeNow(asYesterday).Format("2006-01-02"),
+		TimeAggregate:        "avg",
+		AccountingDoc:        "CERNBox accounts on actually-used space in EOS",
+		Data:                 payload_data,
 	}
 
 	data, err := json.Marshal(payload)
@@ -916,28 +910,19 @@ func getQuotas(mgms ...string) map[string]*eosclient.QuotaInfo {
 	return quotas
 }
 
-/*
-MessageFormatVersion	int	2
-Date	string	YYYY-MM-DD
-FE	string
-ChargeGroup	string
-ChargeRole	string
-WallClockHours	float	X >= 0
-CPUHours	float	X >= 0
-DiskQuota	float	X >= 0
-DiskUsage	float	X >= 0
-Prenormalised	boolean	false by default
-Dedicated       boolean false by default
-*/
-type accReceiverJSON struct {
-	DiskUsage            int
-	DiskQuota            int
-	Date                 string
+/* Format: see https://accounting-docs.web.cern.ch/services/v3/accounting/ */
+type accReceiverJSON_v3_header struct {
 	MessageFormatVersion int
-	WallClockHours       int
-	Dedicated            bool
-	ChargeGroup          string
-	ChargeRole           string
-	CPUHours             int
-	FE                   string
+	FromChargeGroup      string
+	MetricName           string
+	TimePeriod           string
+	TimeStamp            string
+	TimeAggregate        string
+	AccountingDoc        string
+	Data                 []*accReceiverJSON_v3_data `json:"data"`
+}
+type accReceiverJSON_v3_data struct {
+	ToChargeGroup string
+	MetricValue   int
+	ToChargeRole  string
 }
