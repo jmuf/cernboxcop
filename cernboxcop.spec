@@ -1,10 +1,10 @@
-# 
+#
 # cernboxcop spec file
 #
 
 Name: cernboxcop
 Summary: CERNBox cop helps the ops team to be more efficient
-Version: 1.0.6
+Version: 1.0.7
 Release: 1%{?dist}
 License: AGPLv3
 BuildRoot: %{_tmppath}/%{name}-buildroot
@@ -51,6 +51,8 @@ rm -rf %buildroot/
 
 
 %changelog
+* Tue Oct 13 2020 Ishank Arora <ishank.arora@cern.ch> 1.0.7
+- Add command to retrieve availability metric
 * Tue Oct 14 2020 Hugo Gonzalez Labrador <hugo.gonzalez.labrador@cern.ch> 1.0.6
 - Move accounting to v3
 * Tue Oct 6 2020 Hugo Gonzalez Labrador <hugo.gonzalez.labrador@cern.ch> 1.0.5
@@ -66,4 +68,3 @@ rm -rf %buildroot/
 - Fix virtual cost reporting to use price per terabyte
 * Wed Apr 29 2020 Hugo Gonzalez Labrador <hugo.gonzalez.labrador@cern.ch> 1.0.0
 - First version with accounting support
-
