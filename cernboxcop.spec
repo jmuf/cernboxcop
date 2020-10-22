@@ -51,7 +51,7 @@ rm -rf %buildroot/
 
 
 %changelog
-* Tue Oct 13 2020 Ishank Arora <ishank.arora@cern.ch> 1.0.7
+* Tue Oct 22 2020 Ishank Arora <ishank.arora@cern.ch> 1.0.7
 - Add command to retrieve availability metric
 * Tue Oct 14 2020 Hugo Gonzalez Labrador <hugo.gonzalez.labrador@cern.ch> 1.0.6
 - Move accounting to v3
