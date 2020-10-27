@@ -2,10 +2,15 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,8 +19,12 @@ import (
 )
 
 func init() {
+	nsStatCmd.Flags().StringP("carbon-server", "c", "filer-carbon.cern.ch:2003", "graphite server")
+	nsStatCmd.Flags().StringP("prefix", "p", "test.cernbox.newmetrics3.eos.ns-stats", "namespace for metrics")
+
 	rootCmd.AddCommand(metricsCmd)
 	metricsCmd.AddCommand(availabilityCmd)
+	metricsCmd.AddCommand(nsStatCmd)
 }
 
 var metricsCmd = &cobra.Command{
@@ -186,4 +195,80 @@ func sendStatus(status, info string) {
 	}
 
 	fmt.Printf("Availability status: %s\nInfo: %s\n", status, info)
+}
+
+var nsStatCmd = &cobra.Command{
+	Use:   "eos-ns-stat",
+	Short: "Retrieves operation calls per user",
+	Run: func(cmd *cobra.Command, args []string) {
+
+		metrics := map[string]float64{}
+		mgms := []string{"eoshome-i00", "eoshome-i01", "eoshome-i02", "eoshome-i03", "eoshome-i04", "eosproject-i00", "eosproject-i01", "eosproject-i02"}
+		for _, i := range mgms {
+			a := `eos -r 0 0 ns stat -m -a | grep cmd | grep -v gid | sed 's/=/ /g' | grep -v 'root cmd' | awk '{print $2,$4,$12}'`
+			c := exec.Command("/usr/bin/bash", "-c", a)
+			m := fmt.Sprintf("root://%s.cern.ch", i)
+			c.Env = []string{
+				"EOS_MGM_URL=" + m,
+			}
+			ctx, _ := context.WithTimeout(context.Background(), time.Second*30)
+			o, e, err := execute(ctx, c)
+			if err != nil {
+				fmt.Fprintln(os.Stdout, "stdout", o)
+				fmt.Fprintln(os.Stderr, "stderr", e)
+				er(err)
+			}
+
+			lines := strings.Split(o, "\n")
+			for _, l := range lines {
+				l = strings.TrimSpace(l)
+				if l == "" {
+					continue
+				}
+				tokens := strings.Split(l, " ")
+				username := tokens[0]
+				op := tokens[1]
+				op = strings.ReplaceAll(op, "::", "-")
+				hz5m := tokens[2]
+				hz5mFloat, _ := strconv.ParseFloat(hz5m, 64)
+				hz5mFloat = hz5mFloat * 60 * 5 // get total ops per 5 min slot
+				key := fmt.Sprintf("%s.%s.%s", i, username, op)
+				metrics[key] = hz5mFloat
+			}
+
+		}
+
+		// create tcp connection
+		server, _ := cmd.Flags().GetString("carbon-server")
+		prefix, _ := cmd.Flags().GetString("prefix")
+		conn, err := net.Dial("tcp", server)
+		if err != nil {
+			er(err)
+		}
+
+		now := time.Now().Unix()
+		format := "%s.%s %f %d\n"
+		for k, v := range metrics {
+			payload := fmt.Sprintf(format, prefix, k, v, now)
+			fmt.Print(payload)
+			if _, err := conn.Write([]byte(payload)); err != nil {
+				er(err)
+			}
+		}
+
+	},
+}
+
+func execute(ctx context.Context, cmd *exec.Cmd) (string, string, error) {
+	outBuf := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	cmd.Stdout = outBuf
+	cmd.Stderr = errBuf
+
+	err := cmd.Run()
+	if err != nil {
+		return outBuf.String(), errBuf.String(), err
+	}
+
+	return outBuf.String(), errBuf.String(), err
 }
