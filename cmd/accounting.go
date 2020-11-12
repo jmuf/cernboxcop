@@ -177,7 +177,7 @@ var pushData = func(endpoint, file string) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
 
-		log.Error().Msgf("error pushing data to:%s err:%+v", endpoint, file, err)
+		log.Error().Msgf("error pushing data to:%s file:%s err:%+v", endpoint, file, err)
 		er(err)
 	}
 	req, err := http.NewRequest("POST", endpoint, strings.NewReader(string(data)))
@@ -706,7 +706,6 @@ var getCharging = func(infos []*projectInfo, concurrency int) map[string]*charge
 				er(err)
 			}
 
-			log.Info().Msgf("Charge info: sent:%d got:%d")
 			fmt.Fprintf(os.Stderr, "\r %s Resolving charging information [%d/%d]", s.Next(), counter, totalAccounts)
 			for k, v := range cr {
 				ci := &chargeInfo{}

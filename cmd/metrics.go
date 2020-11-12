@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -201,8 +201,7 @@ var nsStatCmd = &cobra.Command{
 	Use:   "eos-ns-stat",
 	Short: "Retrieves operation calls per user",
 	Run: func(cmd *cobra.Command, args []string) {
-
-		metrics := map[string]float64{}
+		metrics := map[string]map[string]float64{}
 		mgms := []string{"eoshome-i00", "eoshome-i01", "eoshome-i02", "eoshome-i03", "eoshome-i04", "eosproject-i00", "eosproject-i01", "eosproject-i02"}
 		for _, i := range mgms {
 			a := `eos -r 0 0 ns stat -m -a | grep cmd | grep -v gid | sed 's/=/ /g' | grep -v 'root cmd' | awk '{print $2,$4,$12}'`
@@ -232,29 +231,49 @@ var nsStatCmd = &cobra.Command{
 				hz5m := tokens[2]
 				hz5mFloat, _ := strconv.ParseFloat(hz5m, 64)
 				hz5mFloat = hz5mFloat * 60 * 5 // get total ops per 5 min slot
-				key := fmt.Sprintf("%s.%s.%s", i, username, op)
-				metrics[key] = hz5mFloat
+				if _, ok := metrics[op]; !ok {
+					metrics[op] = map[string]float64{username: hz5mFloat}
+				} else {
+					metrics[op][username] = hz5mFloat
+				}
 			}
+		}
 
+		for op, v := range metrics {
+			pl := pairList{}
+			for u, h := range v {
+				pr := pair{user: u, hz: h}
+				pl = append(pl, pr)
+			}
+			sort.Sort(sort.Reverse(pl))
+			// limit to 20
+			if len(pl) > 20 {
+				pl = pl[0:20]
+			}
+			for j := range pl {
+				fmt.Printf("%s.%s %f\n", op, pl[j].user, pl[j].hz)
+			}
 		}
 
 		// create tcp connection
-		server, _ := cmd.Flags().GetString("carbon-server")
-		prefix, _ := cmd.Flags().GetString("prefix")
-		conn, err := net.Dial("tcp", server)
-		if err != nil {
-			er(err)
-		}
-
-		now := time.Now().Unix()
-		format := "%s.%s %f %d\n"
-		for k, v := range metrics {
-			payload := fmt.Sprintf(format, prefix, k, v, now)
-			fmt.Print(payload)
-			if _, err := conn.Write([]byte(payload)); err != nil {
+		/*
+			server, _ := cmd.Flags().GetString("carbon-server")
+			prefix, _ := cmd.Flags().GetString("prefix")
+			conn, err := net.Dial("tcp", server)
+			if err != nil {
 				er(err)
 			}
-		}
+
+			now := time.Now().Unix()
+			format := "%s.%s %f %d\n"
+			for k, v := range metrics {
+				payload := fmt.Sprintf(format, prefix, k, v, now)
+				fmt.Print(payload)
+				if _, err := conn.Write([]byte(payload)); err != nil {
+					er(err)
+				}
+			}
+		*/
 
 	},
 }
@@ -272,3 +291,14 @@ func execute(ctx context.Context, cmd *exec.Cmd) (string, string, error) {
 
 	return outBuf.String(), errBuf.String(), err
 }
+
+// filter out to keep only top 20 per op
+type pair struct {
+	user string
+	hz   float64
+}
+type pairList []pair
+
+func (p pairList) Len() int           { return len(p) }
+func (p pairList) Less(i, j int) bool { return p[i].hz < p[j].hz }
+func (p pairList) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }

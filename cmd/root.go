@@ -40,6 +40,9 @@ func Execute() error {
 }
 
 func init() {
+	loadConfig()
+}
+func loadConfig() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "/etc/cernboxcop/cernboxcop.yaml", "config file")
 }

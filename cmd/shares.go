@@ -345,7 +345,7 @@ func updateShareOwner(shareId int, newOwner string) {
 	stmtString := "update oc_share set uid_owner=? where id=?"
 	stmt, err := db.Prepare(stmtString)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error updating share owner for id=%s with new owner=%s\n", shareId, newOwner)
+		fmt.Fprintf(os.Stderr, "error updating share owner for id=%d with new owner=%s\n", shareId, newOwner)
 		er(err)
 	}
 
