@@ -19,7 +19,7 @@ func TestDemangle(t *testing.T) {
 		},
 		&tuple{
 			"SubWG_Experiments/EXP_resources_subgroup_comments.xlsx",
-			"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDUwMDA5MjcsImFjY291bnRfaWQiOiJnY2F2YWxsbyIsImdyb3VwcyI6W10sImRpc3BsYXlfbmFtZSI6IkdyZWdvcnkgQ2F2YWxsbyAoZ2NhdmFsbG8pIn0.p5RBKjOZtQf9TRDsxQiiM4jWw22pcKIzlJMbypXZ_LI",
+			"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJX.eyJleHAiOjE2MDUwMDA5MjcsImFjY291bnRfaWQiOiJnY2F2YWxsbyIsImdyb3VwcyI6W10sImRpc3BsYXlfbmFtZSI6IkdyZWdvcnkgQ2F2YWxsbyAoZ2NhdmFsbG8pIn0.p5RBKjOZtQf9TRDsxQiiM4jWw22pcKIzlJMbypXZ_00",
 			"/eos/user/g/gcavallo/SubWG_Experiments/EXP_resources_subgroup_comments.xlsx",
 		},
 		/*
