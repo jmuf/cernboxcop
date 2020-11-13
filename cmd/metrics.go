@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/spf13/viper"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,12 +20,13 @@ import (
 )
 
 func init() {
-	nsStatCmd.Flags().StringP("carbon-server", "c", "filer-carbon.cern.ch:2003", "graphite server")
-	nsStatCmd.Flags().StringP("prefix", "p", "test.cernbox.newmetrics3.eos.ns-stats", "namespace for metrics")
+	//	nsStatCmd.Flags().StringP("carbon-server", "c", "filer-carbon.cern.ch:2003", "graphite server")
+	//	nsStatCmd.Flags().StringP("prefix", "p", "test.cernbox.newmetrics3.eos.ns-stats", "namespace for metrics")
 
 	rootCmd.AddCommand(metricsCmd)
 	metricsCmd.AddCommand(availabilityCmd)
 	metricsCmd.AddCommand(nsStatCmd)
+	metricsCmd.AddCommand(ioStatCmd)
 }
 
 var metricsCmd = &cobra.Command{
@@ -197,14 +199,24 @@ func sendStatus(status, info string) {
 	fmt.Printf("Availability status: %s\nInfo: %s\n", status, info)
 }
 
-var nsStatCmd = &cobra.Command{
-	Use:   "eos-ns-stat",
-	Short: "Retrieves operation calls per user",
+var ioStatCmd = &cobra.Command{
+	Use:   "eos-io-stat",
+	Short: "Retrieves IO operation calls per user",
 	Run: func(cmd *cobra.Command, args []string) {
-		metrics := map[string]map[string]float64{}
+		influxUsername := viper.GetString("influx_username")
+		influxPassword := viper.GetString("influx_password")
+		influxHostname := viper.GetString("influx_hostname")
+		influxPort := viper.GetInt("influx_port")
+		type fourTuple struct {
+			instance string
+			username string
+			op       string
+			value    float64
+		}
+		tuples := []*fourTuple{}
 		mgms := []string{"eoshome-i00", "eoshome-i01", "eoshome-i02", "eoshome-i03", "eoshome-i04", "eosproject-i00", "eosproject-i01", "eosproject-i02"}
 		for _, i := range mgms {
-			a := `eos -r 0 0 ns stat -m -a | grep cmd | grep -v gid | sed 's/=/ /g' | grep -v 'root cmd' | awk '{print $2,$4,$12}'`
+			a := `eos -r 0 0 io stat -a -m | grep uid | less | sed 's/=/ /g' | awk '{print $2, $4, $12}'`
 			c := exec.Command("/usr/bin/bash", "-c", a)
 			m := fmt.Sprintf("root://%s.cern.ch", i)
 			c.Env = []string{
@@ -225,55 +237,148 @@ var nsStatCmd = &cobra.Command{
 					continue
 				}
 				tokens := strings.Split(l, " ")
+				if len(tokens) < 3 {
+					continue
+				}
 				username := tokens[0]
 				op := tokens[1]
 				op = strings.ReplaceAll(op, "::", "-")
-				hz5m := tokens[2]
-				hz5mFloat, _ := strconv.ParseFloat(hz5m, 64)
-				hz5mFloat = hz5mFloat * 60 * 5 // get total ops per 5 min slot
-				if _, ok := metrics[op]; !ok {
-					metrics[op] = map[string]float64{username: hz5mFloat}
-				} else {
-					metrics[op][username] = hz5mFloat
-				}
+				volume60m := tokens[2]
+				volume60mFloat, _ := strconv.ParseFloat(volume60m, 64)
+
+				tuples = append(tuples, &fourTuple{
+					instance: i,
+					username: username,
+					op:       op,
+					value:    volume60mFloat,
+				})
 			}
+
 		}
 
-		for op, v := range metrics {
-			pl := pairList{}
-			for u, h := range v {
-				pr := pair{user: u, hz: h}
-				pl = append(pl, pr)
-			}
-			sort.Sort(sort.Reverse(pl))
-			// limit to 20
-			if len(pl) > 20 {
-				pl = pl[0:20]
-			}
-			for j := range pl {
-				fmt.Printf("%s.%s %f\n", op, pl[j].user, pl[j].hz)
-			}
+		lines := []string{}
+		for _, t := range tuples {
+			line := fmt.Sprintf("ioops,instance=%s,op=%s,username=%s value=%f %d", t.instance, t.op, t.username, t.value, time.Now().UnixNano())
+			lines = append(lines, line)
 		}
 
-		// create tcp connection
-		/*
-			server, _ := cmd.Flags().GetString("carbon-server")
-			prefix, _ := cmd.Flags().GetString("prefix")
-			conn, err := net.Dial("tcp", server)
+		client := &http.Client{}
+		limit := len(lines) / 2000 // 2K chunks are under 5K batch size recommendation for influx
+		for j := 0; j < len(lines); j += limit {
+			batch := lines[j:min(j+limit, len(lines))]
+			body := strings.Join(batch, "\n")
+			url := fmt.Sprintf("https://%s:%d/write?db=eos", influxHostname, influxPort)
+			req, err := http.NewRequest("POST", url, strings.NewReader(body))
+			if err != nil {
+				er(err)
+			}
+			req.SetBasicAuth(influxUsername, influxPassword)
+			res, err := client.Do(req)
 			if err != nil {
 				er(err)
 			}
 
-			now := time.Now().Unix()
-			format := "%s.%s %f %d\n"
-			for k, v := range metrics {
-				payload := fmt.Sprintf(format, prefix, k, v, now)
-				fmt.Print(payload)
-				if _, err := conn.Write([]byte(payload)); err != nil {
-					er(err)
-				}
+			if res.StatusCode != http.StatusNoContent {
+				body, _ := ioutil.ReadAll(res.Body)
+				errString := fmt.Sprintf("failed to write to influxdb: %v %v", res.StatusCode, string(body))
+				err := errors.New(errString)
+				er(err)
 			}
-		*/
+		}
+
+	},
+}
+
+var nsStatCmd = &cobra.Command{
+	Use:   "eos-ns-stat",
+	Short: "Retrieves NS operation calls per user",
+	Run: func(cmd *cobra.Command, args []string) {
+		influxUsername := viper.GetString("influx_username")
+		influxPassword := viper.GetString("influx_password")
+		influxHostname := viper.GetString("influx_hostname")
+		influxPort := viper.GetInt("influx_port")
+		type fourTuple struct {
+			instance string
+			username string
+			op       string
+			value    float64
+		}
+		tuples := []*fourTuple{}
+		mgms := []string{"eoshome-i00", "eoshome-i01", "eoshome-i02", "eoshome-i03", "eoshome-i04", "eosproject-i00", "eosproject-i01", "eosproject-i02"}
+		for _, i := range mgms {
+			a := `eos -r 0 0 ns stat -m -a | grep cmd | sed 's/=/ /g' | grep -v 'root cmd' | sed 's/gid all //g' | awk '{print $2,$4,$14}'`
+			c := exec.Command("/usr/bin/bash", "-c", a)
+			m := fmt.Sprintf("root://%s.cern.ch", i)
+			c.Env = []string{
+				"EOS_MGM_URL=" + m,
+			}
+			ctx, _ := context.WithTimeout(context.Background(), time.Second*30)
+			o, e, err := execute(ctx, c)
+			if err != nil {
+				fmt.Fprintln(os.Stdout, "stdout", o)
+				fmt.Fprintln(os.Stderr, "stderr", e)
+				er(err)
+			}
+
+			lines := strings.Split(o, "\n")
+			for _, l := range lines {
+				l = strings.TrimSpace(l)
+				if l == "" {
+					continue
+				}
+				tokens := strings.Split(l, " ")
+				if len(tokens) < 3 {
+					continue
+				}
+				username := tokens[0]
+				op := tokens[1]
+				op = strings.ReplaceAll(op, "::", "-")
+				hz60m := tokens[2]
+				hz60mFloat, err := strconv.ParseFloat(hz60m, 64)
+				if err != nil {
+					continue
+				}
+				hz60mFloat = hz60mFloat * 60 * 60 // get total ops per hour
+
+				tuples = append(tuples, &fourTuple{
+					instance: i,
+					username: username,
+					op:       op,
+					value:    hz60mFloat,
+				})
+			}
+
+		}
+
+		lines := []string{}
+		for _, t := range tuples {
+			line := fmt.Sprintf("nsops,instance=%s,op=%s,username=%s value=%f %d", t.instance, t.op, t.username, t.value, time.Now().UnixNano())
+			lines = append(lines, line)
+		}
+
+		client := &http.Client{}
+		limit := len(lines) / 2000 // 2K chunks are under 5K batch size recommendation for influx
+		for j := 0; j < len(lines); j += limit {
+			batch := lines[j:min(j+limit, len(lines))]
+			body := strings.Join(batch, "\n")
+			url := fmt.Sprintf("https://%s:%d/write?db=eos", influxHostname, influxPort)
+			req, err := http.NewRequest("POST", url, strings.NewReader(body))
+			if err != nil {
+				er(err)
+			}
+			req.SetBasicAuth(influxUsername, influxPassword)
+			res, err := client.Do(req)
+			if err != nil {
+				er(err)
+			}
+
+			if res.StatusCode != http.StatusNoContent {
+				body, _ := ioutil.ReadAll(res.Body)
+				errString := fmt.Sprintf("failed to write to influxdb: %v %v", res.StatusCode, string(body))
+				err := errors.New(errString)
+				er(err)
+			}
+		}
 
 	},
 }
@@ -302,3 +407,9 @@ type pairList []pair
 func (p pairList) Len() int           { return len(p) }
 func (p pairList) Less(i, j int) bool { return p[i].hz < p[j].hz }
 func (p pairList) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+func min(a, b int) int {
+	if a <= b {
+		return a
+	}
+	return b
+}
