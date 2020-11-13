@@ -4,7 +4,7 @@
 
 Name: cernboxcop
 Summary: CERNBox cop helps the ops team to be more efficient
-Version: 1.0.8
+Version: 1.0.9
 Release: 1%{?dist}
 License: AGPLv3
 BuildRoot: %{_tmppath}/%{name}-buildroot
@@ -51,6 +51,8 @@ rm -rf %buildroot/
 
 
 %changelog
+* Fri Nov 13 2020 Hugo Gonzalez Labrador <hugo.gonzalez.labrador@cern.ch> 1.0.9
+- Add io and stat command to fetch metrics from EOS
 * Tue Oct 29 2020 Hugo Gonzalez Labrador <hugo.gonzalez.labrador@cern.ch> 1.0.8
 - Add metrics command to fetch eos ns stats
 * Tue Oct 22 2020 Ishank Arora <ishank.arora@cern.ch> 1.0.7
