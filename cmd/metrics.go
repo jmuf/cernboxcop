@@ -27,6 +27,7 @@ func init() {
 	metricsCmd.AddCommand(availabilityCmd)
 	metricsCmd.AddCommand(nsStatCmd)
 	metricsCmd.AddCommand(ioStatCmd)
+	metricsCmd.AddCommand(quotaCmd)
 }
 
 var metricsCmd = &cobra.Command{
@@ -259,6 +260,126 @@ var ioStatCmd = &cobra.Command{
 		lines := []string{}
 		for _, t := range tuples {
 			line := fmt.Sprintf("ioops,instance=%s,op=%s,username=%s value=%f %d", t.instance, t.op, t.username, t.value, time.Now().UnixNano())
+			lines = append(lines, line)
+		}
+
+		client := &http.Client{}
+		limit := len(lines) / 2000 // 2K chunks are under 5K batch size recommendation for influx
+		for j := 0; j < len(lines); j += limit {
+			batch := lines[j:min(j+limit, len(lines))]
+			body := strings.Join(batch, "\n")
+			url := fmt.Sprintf("https://%s:%d/write?db=eos", influxHostname, influxPort)
+			req, err := http.NewRequest("POST", url, strings.NewReader(body))
+			if err != nil {
+				er(err)
+			}
+			req.SetBasicAuth(influxUsername, influxPassword)
+			res, err := client.Do(req)
+			if err != nil {
+				er(err)
+			}
+
+			if res.StatusCode != http.StatusNoContent {
+				body, _ := ioutil.ReadAll(res.Body)
+				errString := fmt.Sprintf("failed to write to influxdb: %v %v", res.StatusCode, string(body))
+				err := errors.New(errString)
+				er(err)
+			}
+		}
+
+	},
+}
+
+var quotaCmd = &cobra.Command{
+	Use:   "eos-quota",
+	Short: "Retrieves quotas",
+	Run: func(cmd *cobra.Command, args []string) {
+		influxUsername := viper.GetString("influx_username")
+		influxPassword := viper.GetString("influx_password")
+		influxHostname := viper.GetString("influx_hostname")
+		influxPort := viper.GetInt("influx_port")
+		type tuple struct {
+			instance string
+			username string
+			op       string
+			value    float64
+		}
+		tuples := []*tuple{}
+		mgms := []string{"eoshome-i00", "eoshome-i01", "eoshome-i02", "eoshome-i03", "eoshome-i04", "eosproject-i00", "eosproject-i01", "eosproject-i02"}
+		for _, i := range mgms {
+			a := `eos -r 0 0 quota ls -m | sed 's/=/ /g' |  awk '{print $4,$6,$10,$12,$16,$18}'`
+			c := exec.Command("/usr/bin/bash", "-c", a)
+			m := fmt.Sprintf("root://%s.cern.ch", i)
+			c.Env = []string{
+				"EOS_MGM_URL=" + m,
+			}
+			ctx, _ := context.WithTimeout(context.Background(), time.Second*30)
+			o, e, err := execute(ctx, c)
+			if err != nil {
+				fmt.Fprintln(os.Stdout, "stdout", o)
+				fmt.Fprintln(os.Stderr, "stderr", e)
+				er(err)
+			}
+
+			lines := strings.Split(o, "\n")
+			for _, l := range lines {
+				l = strings.TrimSpace(l)
+				if l == "" {
+					continue
+				}
+				// line is:
+				// acontesc /eos/home-i01/opstest/acontesc/ 677935596413 463 750000000000000 1000000
+				tokens := strings.Split(l, " ")
+				if len(tokens) < 6 {
+					continue
+				}
+				username := tokens[0]
+				space := tokens[1]
+				usedBytesString := tokens[2]
+				usedFilesString := tokens[3]
+				maxBytesString := tokens[4]
+				maxFilesString := tokens[5]
+
+				if !strings.HasPrefix(space, "/eos/user") && !strings.HasPrefix(space, "/eos/project") {
+					continue
+				}
+
+				usedBytesFloat, _ := strconv.ParseFloat(usedBytesString, 64)
+				usedFilesFloat, _ := strconv.ParseFloat(usedFilesString, 64)
+				maxBytesFloat, _ := strconv.ParseFloat(maxBytesString, 64)
+				maxFilesFloat, _ := strconv.ParseFloat(maxFilesString, 64)
+
+				tuples = append(tuples, &tuple{
+					instance: i,
+					username: username,
+					op:       "usedbytes",
+					value:    usedBytesFloat,
+				})
+				tuples = append(tuples, &tuple{
+					instance: i,
+					username: username,
+					op:       "maxbytes",
+					value:    maxBytesFloat,
+				})
+				tuples = append(tuples, &tuple{
+					instance: i,
+					username: username,
+					op:       "usedfiles",
+					value:    usedFilesFloat,
+				})
+				tuples = append(tuples, &tuple{
+					instance: i,
+					username: username,
+					op:       "maxfiles",
+					value:    maxFilesFloat,
+				})
+			}
+
+		}
+
+		lines := []string{}
+		for _, t := range tuples {
+			line := fmt.Sprintf("quotas,instance=%s,op=%s,username=%s value=%f %d", t.instance, t.op, t.username, t.value, time.Now().UnixNano())
 			lines = append(lines, line)
 		}
 
