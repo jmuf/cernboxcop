@@ -139,8 +139,21 @@ func getProbeUser() (string, string) {
 	return viper.GetString("probe_username"), viper.GetString("probe_password")
 }
 
+// TODO: to delete
 func getProbeEOSInstances() []string {
 	return viper.GetStringSlice("probe_eos_instances")
+}
+
+func getProbeTouchInstances() []string {
+	return viper.GetStringSlice("probe_touch_instances")
+}
+
+func getProbeXrdcpInstances() []string {
+	return viper.GetStringSlice("probe_xrdcp_instances")
+}
+
+func getProbeWebdavInstances() []string {
+	return viper.GetStringSlice("probe_webdav_instances")
 }
 
 func saveWith(file string, data []byte) {
