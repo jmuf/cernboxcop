@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/spf13/viper"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/spf13/viper"
 
 	"github.com/spf13/cobra"
 )
@@ -35,76 +36,74 @@ var metricsCmd = &cobra.Command{
 	Short: "CERNBox service metrics",
 }
 
+func webDavTest(user string, password string) {
+	text := "dummy text with time " + time.Now().String()
+
+	serverURL := fmt.Sprintf("https://cernbox.cern.ch/cernbox/desktop/remote.php/webdav/eos/user/%s/%s/sls", user[:1], user)
+	httpClient := &http.Client{}
+
+	// Create the remote folder
+	mkdirReq, err := http.NewRequest("MKCOL", serverURL, nil)
+	check(err)
+
+	mkdirReq.SetBasicAuth(user, password)
+	mkdirRes, err := httpClient.Do(mkdirReq)
+	check(err)
+
+	mkdirRes.Body.Close()
+	if mkdirRes.StatusCode != http.StatusOK && mkdirRes.StatusCode != http.StatusCreated {
+		sendStatus("degraded", "WebDAV MKCOL calls are failing")
+		return
+	}
+
+	// Upload file to OC server
+	uploadReq, err := http.NewRequest("PUT", serverURL+"/dummy.txt", strings.NewReader(text))
+	check(err)
+
+	uploadReq.SetBasicAuth(user, password)
+	uploadRes, err := httpClient.Do(uploadReq)
+	check(err)
+
+	uploadRes.Body.Close()
+	if uploadRes.StatusCode != http.StatusOK && uploadRes.StatusCode != http.StatusCreated {
+		sendStatus("degraded", "WebDAV uploads are failing")
+		return
+	}
+
+	// Download the file
+	downloadReq, err := http.NewRequest("GET", serverURL+"/dummy.txt", nil)
+	if err != nil {
+		er(err)
+	}
+	downloadReq.SetBasicAuth(user, password)
+	downloadRes, err := httpClient.Do(downloadReq)
+	check(err)
+
+	defer downloadRes.Body.Close()
+	if downloadRes.StatusCode != http.StatusOK {
+		sendStatus("degraded", "WebDAV downloads are failing")
+		return
+	}
+	body, err := ioutil.ReadAll(downloadRes.Body)
+	check(err)
+
+	if string(body) != text {
+		sendStatus("degraded", "WebDAV downloads are failing")
+		return
+	}
+}
+
 var availabilityCmd = &cobra.Command{
 	Use:   "availability",
 	Short: "Checks the CERNBox HTTP service and EOS instances for availability",
 	Run: func(cmd *cobra.Command, args []string) {
-
-		text := "dummy text with time " + time.Now().String()
 
 		user, password := getProbeUser()
 		if user == "" || password == "" {
 			er("please set probe_user and probe_password in the config")
 		}
 
-		serverURL := fmt.Sprintf("https://cernbox.cern.ch/cernbox/desktop/remote.php/webdav/eos/user/%s/%s/sls", user[:1], user)
-		httpClient := &http.Client{}
-
-		// Create the remote folder
-		mkdirReq, err := http.NewRequest("MKCOL", serverURL, nil)
-		if err != nil {
-			er(err)
-		}
-		mkdirReq.SetBasicAuth(user, password)
-		mkdirRes, err := httpClient.Do(mkdirReq)
-		if err != nil {
-			er(err)
-		}
-		mkdirRes.Body.Close()
-		if mkdirRes.StatusCode != http.StatusOK && mkdirRes.StatusCode != http.StatusCreated {
-			sendStatus("degraded", "WebDAV MKCOL calls are failing")
-			return
-		}
-
-		// Upload file to OC server
-		uploadReq, err := http.NewRequest("PUT", serverURL+"/dummy.txt", strings.NewReader(text))
-		if err != nil {
-			er(err)
-		}
-		uploadReq.SetBasicAuth(user, password)
-		uploadRes, err := httpClient.Do(uploadReq)
-		if err != nil {
-			er(err)
-		}
-		uploadRes.Body.Close()
-		if uploadRes.StatusCode != http.StatusOK && uploadRes.StatusCode != http.StatusCreated {
-			sendStatus("degraded", "WebDAV uploads are failing")
-			return
-		}
-
-		// Download the file
-		downloadReq, err := http.NewRequest("GET", serverURL+"/dummy.txt", nil)
-		if err != nil {
-			er(err)
-		}
-		downloadReq.SetBasicAuth(user, password)
-		downloadRes, err := httpClient.Do(downloadReq)
-		if err != nil {
-			er(err)
-		}
-		defer downloadRes.Body.Close()
-		if downloadRes.StatusCode != http.StatusOK {
-			sendStatus("degraded", "WebDAV downloads are failing")
-			return
-		}
-		body, err := ioutil.ReadAll(downloadRes.Body)
-		if err != nil {
-			er(err)
-		}
-		if string(body) != text {
-			sendStatus("degraded", "WebDAV downloads are failing")
-			return
-		}
+		webDavTest(user, password)
 
 		info := "WebDAV and xrdcopy transfers fully operational"
 		status := "available"

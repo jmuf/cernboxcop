@@ -152,8 +152,10 @@ func getProbeXrdcpInstances() []string {
 	return viper.GetStringSlice("probe_xrdcp_instances")
 }
 
-func getProbeWebdavInstances() []string {
-	return viper.GetStringSlice("probe_webdav_instances")
+func check(err error) {
+	if err != nil {
+		er(err)
+	}
 }
 
 func saveWith(file string, data []byte) {
