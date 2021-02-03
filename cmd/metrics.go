@@ -53,7 +53,7 @@ func webDavTest(user string, password string) {
 	mkdirRes.Body.Close()
 	if mkdirRes.StatusCode != http.StatusOK && mkdirRes.StatusCode != http.StatusCreated {
 		sendStatus("degraded", "WebDAV MKCOL calls are failing")
-		return
+		//return
 	}
 
 	// Upload file to OC server
@@ -67,14 +67,13 @@ func webDavTest(user string, password string) {
 	uploadRes.Body.Close()
 	if uploadRes.StatusCode != http.StatusOK && uploadRes.StatusCode != http.StatusCreated {
 		sendStatus("degraded", "WebDAV uploads are failing")
-		return
+		//return
 	}
 
 	// Download the file
 	downloadReq, err := http.NewRequest("GET", serverURL+"/dummy.txt", nil)
-	if err != nil {
-		er(err)
-	}
+	check(err)
+
 	downloadReq.SetBasicAuth(user, password)
 	downloadRes, err := httpClient.Do(downloadReq)
 	check(err)
@@ -82,15 +81,55 @@ func webDavTest(user string, password string) {
 	defer downloadRes.Body.Close()
 	if downloadRes.StatusCode != http.StatusOK {
 		sendStatus("degraded", "WebDAV downloads are failing")
-		return
+		// return
 	}
 	body, err := ioutil.ReadAll(downloadRes.Body)
 	check(err)
 
 	if string(body) != text {
 		sendStatus("degraded", "WebDAV downloads are failing")
-		return
+		// return
 	}
+}
+
+func xrdcpTest(mgms []string, user string) []string {
+	errors := make([]error, len(mgms))
+	var wg sync.WaitGroup
+
+	for i, mgm := range mgms {
+		wg.Add(1)
+		go xrdcpTestOnSingleNode(mgm, user, &errors[i], &wg)
+	}
+	wg.Wait()
+
+	var failedMGMs []string
+
+	for i := range mgms {
+		if errors[i] != nil {
+			failedMGMs = append(failedMGMs, mgms[i])
+		}
+	}
+	return failedMGMs
+}
+
+func touchTest(mgms []string, user string) []string {
+	errors := make([]error, len(mgms))
+	var wg sync.WaitGroup
+
+	for i, mgm := range mgms {
+		wg.Add(1)
+		go touchOnSingleNode(mgm, user, &errors[i], &wg)
+	}
+	wg.Wait()
+
+	var failedMGMs []string
+
+	for i := range mgms {
+		if errors[i] != nil {
+			failedMGMs = append(failedMGMs, mgms[i])
+		}
+	}
+	return failedMGMs
 }
 
 var availabilityCmd = &cobra.Command{
@@ -105,37 +144,38 @@ var availabilityCmd = &cobra.Command{
 
 		webDavTest(user, password)
 
-		info := "WebDAV and xrdcopy transfers fully operational"
-		status := "available"
+		// da rivedere
+		// info := "WebDAV and xrdcopy transfers fully operational"
+		// status := "available"
+		// ----------------------------
 
-		mgms := getProbeEOSInstances()
-		var failedMGMs []string
-		errors := make([]error, len(mgms))
-		var wg sync.WaitGroup
+		// mgms := getProbeEOSInstances()
+		// var failedMGMs []string
 
-		for i, m := range mgms {
-			wg.Add(1)
-			go xrdcpTest(m, user, &errors[i], &wg)
-		}
-		wg.Wait()
+		// if len(failedMGMs) > 0 {
+		// 	status = "degraded"
+		// 	info = "WebDAV transfers fully operational; xrdcopy tests failing on MGMs: " + strings.Join(failedMGMs, ", ")
+		// }
 
-		for i := range mgms {
-			if errors[i] != nil {
-				failedMGMs = append(failedMGMs, mgms[i])
-			}
-		}
-
-		if len(failedMGMs) > 0 {
-			status = "degraded"
-			info = "WebDAV transfers fully operational; xrdcopy tests failing on MGMs: " + strings.Join(failedMGMs, ", ")
-		}
-
-		sendStatus(status, info)
+		// sendStatus(status, info)
 
 	},
 }
 
-func xrdcpTest(mgm, user string, e *error, wg *sync.WaitGroup) {
+func touchOnSingleNode(mgm, user string, e *error, wg *sync.WaitGroup) {
+	defer wg.Done()
+	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", mgm))
+	path := fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", strings.TrimPrefix(mgm, "eos"))
+
+	ctx := getCtx()
+
+	if err := eosClient.Touch(ctx, user, path); err != nil {
+		*e = err
+		return
+	}
+}
+
+func xrdcpTestOnSingleNode(mgm, user string, e *error, wg *sync.WaitGroup) {
 	defer wg.Done()
 	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", mgm))
 
