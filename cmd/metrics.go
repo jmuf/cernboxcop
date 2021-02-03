@@ -92,13 +92,13 @@ func webDavTest(user string, password string) {
 	}
 }
 
-func xrdcpTest(mgms []string, user string) []string {
+func runTestOnMultipleNodes(test func(string, string, *error, *sync.WaitGroup), mgms []string, user string) []string {
 	errors := make([]error, len(mgms))
 	var wg sync.WaitGroup
 
 	for i, mgm := range mgms {
 		wg.Add(1)
-		go xrdcpTestOnSingleNode(mgm, user, &errors[i], &wg)
+		go test(mgm, user, &errors[i], &wg)
 	}
 	wg.Wait()
 
@@ -112,24 +112,12 @@ func xrdcpTest(mgms []string, user string) []string {
 	return failedMGMs
 }
 
+func xrdcpTest(mgms []string, user string) []string {
+	return runTestOnMultipleNodes(xrdcpTestOnSingleNode, mgms, user)
+}
+
 func touchTest(mgms []string, user string) []string {
-	errors := make([]error, len(mgms))
-	var wg sync.WaitGroup
-
-	for i, mgm := range mgms {
-		wg.Add(1)
-		go touchOnSingleNode(mgm, user, &errors[i], &wg)
-	}
-	wg.Wait()
-
-	var failedMGMs []string
-
-	for i := range mgms {
-		if errors[i] != nil {
-			failedMGMs = append(failedMGMs, mgms[i])
-		}
-	}
-	return failedMGMs
+	return runTestOnMultipleNodes(touchOnSingleNode, mgms, user)
 }
 
 var availabilityCmd = &cobra.Command{
