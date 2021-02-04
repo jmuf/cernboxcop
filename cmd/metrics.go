@@ -25,11 +25,11 @@ type probe struct {
 	User        string
 	Func        func(string, string, *error, *sync.WaitGroup)
 	Nodes       []string
-	NodesFailed []string
+	NodesFailed *[]string
 }
 
 func Probe(name string, user string, probeTest func(string, string, *error, *sync.WaitGroup), nodes []string) probe {
-	return probe{name, user, probeTest, nodes, nil}
+	return probe{name, user, probeTest, nodes, new([]string)}
 }
 
 func (p probe) Run() {
@@ -44,7 +44,8 @@ func (p probe) Run() {
 
 	for i, node := range p.Nodes {
 		if errors[i] != nil {
-			p.NodesFailed = append(p.NodesFailed, node)
+			fmt.Println(errors[i])
+			*p.NodesFailed = append(*p.NodesFailed, node)
 		}
 	}
 }
@@ -55,22 +56,22 @@ func (p probe) IsSuccess() bool {
 
 func (p probe) PrintAndSendReport() {
 	if p.IsSuccess() {
-		logSuccess(p.Name, " successfully runned")
+		logSuccess(p.Name, "successfully runned")
 		return
 	}
 
 	// some errors in the test
-	errorMsg := fmt.Sprintf("%s failed on the following nodes: %s", p.Name, strings.Join(p.NodesFailed, ", "))
+	errorMsg := fmt.Sprintf("%s failed on the following nodes: %s", p.Name, strings.Join(*p.NodesFailed, ", "))
 
 	// print on stdout the error
 	logError(errorMsg)
 	// send error notify
-	sendStatus("degraded", errorMsg)
+	// sendStatus("degraded", errorMsg)
 
 }
 
 func logSuccess(str ...string) {
-	fmt.Println("[SUCCESS] ", str)
+	fmt.Println("[SUCCESS]", str)
 }
 
 func logError(str ...string) {
