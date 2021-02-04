@@ -150,40 +150,6 @@ func webDavTest(user string, password string) {
 	}
 }
 
-// // deprecated
-// func runTestOnMultipleNodes(test func(string, string, *error, *sync.WaitGroup),
-// 	mgms []string, user string) []string {
-
-// 	errors := make([]error, len(mgms))
-// 	var wg sync.WaitGroup
-
-// 	for i, mgm := range mgms {
-// 		wg.Add(1)
-// 		go test(mgm, user, &errors[i], &wg)
-// 	}
-// 	wg.Wait()
-
-// 	var failedMGMs []string
-
-// 	for i, mgm := range mgms {
-// 		if errors[i] != nil {
-// 			failedMGMs = append(failedMGMs, mgm)
-// 		}
-// 	}
-// 	return failedMGMs
-
-// }
-
-// // deprecated
-// func xrdcpTest(mgms []string, user string) []string {
-// 	return runTestOnMultipleNodes(xrdcpTestOnSingleNode, mgms, user)
-// }
-
-// // deprecated
-// func touchTest(mgms []string, user string) []string {
-// 	return runTestOnMultipleNodes(touchOnSingleNode, mgms, user)
-// }
-
 var availabilityCmd = &cobra.Command{
 	Use:   "availability",
 	Short: "Checks the CERNBox HTTP service and EOS instances for availability",
