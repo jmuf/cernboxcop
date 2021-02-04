@@ -144,8 +144,8 @@ func getProbeEOSInstances() []string {
 	return viper.GetStringSlice("probe_eos_instances")
 }
 
-func getProbeTouchInstances() []string {
-	return viper.GetStringSlice("probe_touch_instances")
+func getProbeACLsInstances() []string {
+	return viper.GetStringSlice("probe_acls_instances")
 }
 
 func getProbeXrdcpInstances() []string {

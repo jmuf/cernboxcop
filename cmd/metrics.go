@@ -195,10 +195,10 @@ var availabilityCmd = &cobra.Command{
 			er("please set probe_user and probe_password in the config")
 		}
 
-		mgmsTouch := getProbeTouchInstances()
+		mgmsACLs := getProbeACLsInstances()
 		mgmsXrdcp := getProbeXrdcpInstances()
 
-		probeTests := [...]probe{Probe("Touch probe", user, touchTest, mgmsTouch),
+		probeTests := [...]probe{Probe("ListACLs probe", user, aclTest, mgmsACLs),
 			Probe("Xrdcp probe", user, xrdcpTest, mgmsXrdcp)}
 
 		// run tests
@@ -210,14 +210,15 @@ var availabilityCmd = &cobra.Command{
 	},
 }
 
-func touchTest(mgm, user string, e *error, wg *sync.WaitGroup) {
+func aclTest(mgm, user string, e *error, wg *sync.WaitGroup) {
 	defer wg.Done()
 	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", mgm))
-	path := fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", strings.TrimPrefix(mgm, "eos"))
+	path := fmt.Sprintf("/eos/%s/opstest/sls", strings.TrimPrefix(mgm, "eos"))
 
 	ctx := getCtx()
 
-	if err := eosClient.Touch(ctx, user, path); err != nil {
+	_, err := eosClient.ListACLs(ctx, user, path)
+	if err != nil {
 		*e = err
 		return
 	}
