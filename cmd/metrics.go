@@ -20,16 +20,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type probeFun func(string, string, string, *error, *sync.WaitGroup)
+
 type probe struct {
 	Name        string
 	User        string
-	Func        func(string, string, *error, *sync.WaitGroup)
+	Password    string
+	Func        probeFun
 	Nodes       []string
 	NodesFailed *[]string
 }
 
-func Probe(name string, user string, probeTest func(string, string, *error, *sync.WaitGroup), nodes []string) probe {
-	return probe{name, user, probeTest, nodes, new([]string)}
+func Probe(name string, user string, password string, probeTest probeFun, nodes []string) probe {
+	return probe{name, user, password, probeTest, nodes, new([]string)}
 }
 
 func (p probe) Run() {
@@ -38,7 +41,7 @@ func (p probe) Run() {
 
 	for i, node := range p.Nodes {
 		wg.Add(1)
-		go p.Func(node, p.User, &errors[i], &wg)
+		go p.Func(node, p.User, p.Password, &errors[i], &wg)
 	}
 	wg.Wait()
 
@@ -61,7 +64,12 @@ func (p probe) PrintAndSendReport() {
 	}
 
 	// some errors in the test
-	errorMsg := fmt.Sprintf("%s failed on the following nodes: %s", p.Name, strings.Join(*p.NodesFailed, ", "))
+
+	errorMsg := fmt.Sprintf("%s failed", p.Name)
+
+	if len(*p.NodesFailed) != 0 {
+		errorMsg += fmt.Sprintf(" on the following nodes: %s", strings.Join(*p.NodesFailed, ", "))
+	}
 
 	// print on stdout the error
 	logError(errorMsg)
@@ -94,58 +102,97 @@ var metricsCmd = &cobra.Command{
 	Short: "CERNBox service metrics",
 }
 
-func webDavTest(user string, password string) {
-	text := "dummy text with time " + time.Now().String()
-
+func webDavMKCOLTest(node, user, password string, e *error, wg *sync.WaitGroup) {
+	// text := "dummy text with time " + time.Now().String()
+	defer wg.Done()
 	serverURL := fmt.Sprintf("https://cernbox.cern.ch/cernbox/desktop/remote.php/webdav/eos/user/%s/%s/sls", user[:1], user)
 	httpClient := &http.Client{}
 
 	// Create the remote folder
 	mkdirReq, err := http.NewRequest("MKCOL", serverURL, nil)
-	check(err)
+	if err != nil {
+		*e = err
+		return
+	}
 
 	mkdirReq.SetBasicAuth(user, password)
 	mkdirRes, err := httpClient.Do(mkdirReq)
-	check(err)
+	if err != nil {
+		*e = err
+		return
+	}
 
 	mkdirRes.Body.Close()
 	if mkdirRes.StatusCode != http.StatusOK && mkdirRes.StatusCode != http.StatusCreated {
-		sendStatus("degraded", "WebDAV MKCOL calls are failing")
+		*e = fmt.Errorf("MKCOL calls are failing")
+		// sendStatus("degraded", "WebDAV MKCOL calls are failing")
 		//return
 	}
+}
 
-	// Upload file to OC server
+func webDavUpFileTest(node, user, password string, e *error, wg *sync.WaitGroup) {
+	defer wg.Done()
+	text := "dummy text with time " + time.Now().String()
+
+	serverURL := fmt.Sprintf("https://cernbox.cern.ch/cernbox/desktop/remote.php/webdav/eos/user/%s/%s/sls", user[:1], user)
+	httpClient := &http.Client{}
+
 	uploadReq, err := http.NewRequest("PUT", serverURL+"/dummy.txt", strings.NewReader(text))
-	check(err)
+	if err != nil {
+		*e = err
+		return
+	}
 
 	uploadReq.SetBasicAuth(user, password)
 	uploadRes, err := httpClient.Do(uploadReq)
-	check(err)
+	if err != nil {
+		*e = err
+		return
+	}
 
 	uploadRes.Body.Close()
 	if uploadRes.StatusCode != http.StatusOK && uploadRes.StatusCode != http.StatusCreated {
-		sendStatus("degraded", "WebDAV uploads are failing")
+		*e = fmt.Errorf("uploads are failing")
+		// sendStatus("degraded", "WebDAV uploads are failing")
 		//return
 	}
+}
 
-	// Download the file
+func webDavDownTest(node, user, password string, e *error, wg *sync.WaitGroup) {
+	defer wg.Done()
+	text := "dummy text with time " + time.Now().String()
+
+	serverURL := fmt.Sprintf("https://cernbox.cern.ch/cernbox/desktop/remote.php/webdav/eos/user/%s/%s/sls", user[:1], user)
+	httpClient := &http.Client{}
+
 	downloadReq, err := http.NewRequest("GET", serverURL+"/dummy.txt", nil)
-	check(err)
+	if err != nil {
+		*e = err
+		return
+	}
 
 	downloadReq.SetBasicAuth(user, password)
 	downloadRes, err := httpClient.Do(downloadReq)
-	check(err)
+	if err != nil {
+		*e = err
+		return
+	}
 
 	defer downloadRes.Body.Close()
 	if downloadRes.StatusCode != http.StatusOK {
-		sendStatus("degraded", "WebDAV downloads are failing")
+		*e = fmt.Errorf("downloads are failing")
+		// sendStatus("degraded", "WebDAV downloads are failing")
 		// return
 	}
 	body, err := ioutil.ReadAll(downloadRes.Body)
-	check(err)
+	if err != nil {
+		*e = err
+		return
+	}
 
 	if string(body) != text {
-		sendStatus("degraded", "WebDAV downloads are failing")
+		*e = fmt.Errorf("downloads are failing")
+		// sendStatus("degraded", "WebDAV downloads are failing")
 		// return
 	}
 }
@@ -164,8 +211,12 @@ var availabilityCmd = &cobra.Command{
 		mgmsACLs := getProbeACLsInstances()
 		mgmsXrdcp := getProbeXrdcpInstances()
 
-		probeTests := [...]probe{Probe("ListACLs probe", user, aclTest, mgmsACLs),
-			Probe("Xrdcp probe", user, xrdcpTest, mgmsXrdcp)}
+		probeTests := [...]probe{
+			Probe("WebDAV MKCOL test", user, password, webDavMKCOLTest, nil),
+			Probe("WebDAV Upload file test", user, password, webDavUpFileTest, nil),
+			Probe("WebDAV Download file test", user, password, webDavDownTest, nil),
+			Probe("ListACLs probe", user, "", aclTest, mgmsACLs),
+			Probe("Xrdcp probe", user, "", xrdcpTest, mgmsXrdcp)}
 
 		// run tests
 		for _, test := range probeTests {
@@ -176,10 +227,10 @@ var availabilityCmd = &cobra.Command{
 	},
 }
 
-func aclTest(mgm, user string, e *error, wg *sync.WaitGroup) {
+func aclTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 	defer wg.Done()
-	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", mgm))
-	path := fmt.Sprintf("/eos/%s/opstest/sls", strings.TrimPrefix(mgm, "eos"))
+	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", node))
+	path := fmt.Sprintf("/eos/%s/opstest/sls", strings.TrimPrefix(node, "eos"))
 
 	ctx := getCtx()
 
@@ -190,20 +241,20 @@ func aclTest(mgm, user string, e *error, wg *sync.WaitGroup) {
 	}
 }
 
-func xrdcpTest(mgm, user string, e *error, wg *sync.WaitGroup) {
+func xrdcpTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 	defer wg.Done()
-	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", mgm))
+	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", node))
 
 	text := "dummy text with time " + time.Now().String()
 	reader := strings.NewReader(text)
 	ctx := getCtx()
 
-	if err := eosClient.Write(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", strings.TrimPrefix(mgm, "eos")), ioutil.NopCloser(reader)); err != nil {
+	if err := eosClient.Write(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", strings.TrimPrefix(node, "eos")), ioutil.NopCloser(reader)); err != nil {
 		*e = err
 		return
 	}
 
-	if body, err := eosClient.Read(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", strings.TrimPrefix(mgm, "eos"))); err != nil {
+	if body, err := eosClient.Read(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", strings.TrimPrefix(node, "eos"))); err != nil {
 		*e = err
 		return
 	} else {
