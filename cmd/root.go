@@ -154,7 +154,8 @@ func getProbeXrdcpInstances() []string {
 
 func check(err error) {
 	if err != nil {
-		er(err)
+		//er(err)
+		fmt.Println("Error:", err)
 	}
 }
 

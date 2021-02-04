@@ -20,6 +20,63 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type probe struct {
+	Name        string
+	User        string
+	Func        func(string, string, *error, *sync.WaitGroup)
+	Nodes       []string
+	NodesFailed []string
+}
+
+func Probe(name string, user string, probeTest func(string, string, *error, *sync.WaitGroup), nodes []string) probe {
+	return probe{name, user, probeTest, nodes, nil}
+}
+
+func (p probe) Run() {
+	errors := make([]error, len(p.Nodes))
+	var wg sync.WaitGroup
+
+	for i, node := range p.Nodes {
+		wg.Add(1)
+		go p.Func(node, p.User, &errors[i], &wg)
+	}
+	wg.Wait()
+
+	for i, node := range p.Nodes {
+		if errors[i] != nil {
+			p.NodesFailed = append(p.NodesFailed, node)
+		}
+	}
+}
+
+func (p probe) IsSuccess() bool {
+	return p.NodesFailed == nil
+}
+
+func (p probe) PrintAndSendReport() {
+	if p.IsSuccess() {
+		logSuccess(p.Name, " successfully runned")
+		return
+	}
+
+	// some errors in the test
+	errorMsg := fmt.Sprintf("%s failed on the following nodes: %s", p.Name, strings.Join(p.NodesFailed, ", "))
+
+	// print on stdout the error
+	logError(errorMsg)
+	// send error notify
+	sendStatus("degraded", errorMsg)
+
+}
+
+func logSuccess(str ...string) {
+	fmt.Println("[SUCCESS] ", str)
+}
+
+func logError(str ...string) {
+	fmt.Println("[ERROR] ", str)
+}
+
 func init() {
 	//	nsStatCmd.Flags().StringP("carbon-server", "c", "filer-carbon.cern.ch:2003", "graphite server")
 	//	nsStatCmd.Flags().StringP("prefix", "p", "test.cernbox.newmetrics3.eos.ns-stats", "namespace for metrics")
@@ -92,65 +149,67 @@ func webDavTest(user string, password string) {
 	}
 }
 
-func runTestOnMultipleNodes(test func(string, string, *error, *sync.WaitGroup), mgms []string, user string) []string {
-	errors := make([]error, len(mgms))
-	var wg sync.WaitGroup
+// // deprecated
+// func runTestOnMultipleNodes(test func(string, string, *error, *sync.WaitGroup),
+// 	mgms []string, user string) []string {
 
-	for i, mgm := range mgms {
-		wg.Add(1)
-		go test(mgm, user, &errors[i], &wg)
-	}
-	wg.Wait()
+// 	errors := make([]error, len(mgms))
+// 	var wg sync.WaitGroup
 
-	var failedMGMs []string
+// 	for i, mgm := range mgms {
+// 		wg.Add(1)
+// 		go test(mgm, user, &errors[i], &wg)
+// 	}
+// 	wg.Wait()
 
-	for i := range mgms {
-		if errors[i] != nil {
-			failedMGMs = append(failedMGMs, mgms[i])
-		}
-	}
-	return failedMGMs
-}
+// 	var failedMGMs []string
 
-func xrdcpTest(mgms []string, user string) []string {
-	return runTestOnMultipleNodes(xrdcpTestOnSingleNode, mgms, user)
-}
+// 	for i, mgm := range mgms {
+// 		if errors[i] != nil {
+// 			failedMGMs = append(failedMGMs, mgm)
+// 		}
+// 	}
+// 	return failedMGMs
 
-func touchTest(mgms []string, user string) []string {
-	return runTestOnMultipleNodes(touchOnSingleNode, mgms, user)
-}
+// }
+
+// // deprecated
+// func xrdcpTest(mgms []string, user string) []string {
+// 	return runTestOnMultipleNodes(xrdcpTestOnSingleNode, mgms, user)
+// }
+
+// // deprecated
+// func touchTest(mgms []string, user string) []string {
+// 	return runTestOnMultipleNodes(touchOnSingleNode, mgms, user)
+// }
 
 var availabilityCmd = &cobra.Command{
 	Use:   "availability",
 	Short: "Checks the CERNBox HTTP service and EOS instances for availability",
 	Run: func(cmd *cobra.Command, args []string) {
 
+		// initialization
 		user, password := getProbeUser()
 		if user == "" || password == "" {
 			er("please set probe_user and probe_password in the config")
 		}
 
-		webDavTest(user, password)
+		mgmsTouch := getProbeTouchInstances()
+		mgmsXrdcp := getProbeXrdcpInstances()
 
-		// da rivedere
-		// info := "WebDAV and xrdcopy transfers fully operational"
-		// status := "available"
-		// ----------------------------
+		probeTests := [...]probe{Probe("Touch probe", user, touchTest, mgmsTouch),
+			Probe("Xrdcp probe", user, xrdcpTest, mgmsXrdcp)}
 
-		// mgms := getProbeEOSInstances()
-		// var failedMGMs []string
-
-		// if len(failedMGMs) > 0 {
-		// 	status = "degraded"
-		// 	info = "WebDAV transfers fully operational; xrdcopy tests failing on MGMs: " + strings.Join(failedMGMs, ", ")
-		// }
-
-		// sendStatus(status, info)
+		// run tests
+		for _, test := range probeTests {
+			test.Run()
+			test.PrintAndSendReport()
+		}
 
 	},
 }
 
-func touchOnSingleNode(mgm, user string, e *error, wg *sync.WaitGroup) {
+func touchTest(mgm, user string, e *error, wg *sync.WaitGroup) {
 	defer wg.Done()
 	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", mgm))
 	path := fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", strings.TrimPrefix(mgm, "eos"))
@@ -163,7 +222,7 @@ func touchOnSingleNode(mgm, user string, e *error, wg *sync.WaitGroup) {
 	}
 }
 
-func xrdcpTestOnSingleNode(mgm, user string, e *error, wg *sync.WaitGroup) {
+func xrdcpTest(mgm, user string, e *error, wg *sync.WaitGroup) {
 	defer wg.Done()
 	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", mgm))
 
