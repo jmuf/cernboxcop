@@ -28,14 +28,15 @@ type probe struct {
 	Password    string
 	Func        probeFun
 	Nodes       []string
-	NodesFailed *[]string
+	NodesFailed map[string]error
+	IsSuccess   bool
 }
 
 func Probe(name string, user string, password string, probeTest probeFun, nodes []string) probe {
-	return probe{name, user, password, probeTest, nodes, new([]string)}
+	return probe{name, user, password, probeTest, nodes, make(map[string]error), true}
 }
 
-func (p probe) Run() {
+func (p *probe) Run() {
 	errors := make([]error, len(p.Nodes))
 	var wg sync.WaitGroup
 
@@ -47,19 +48,15 @@ func (p probe) Run() {
 
 	for i, node := range p.Nodes {
 		if errors[i] != nil {
-			fmt.Println(errors[i])
-			*p.NodesFailed = append(*p.NodesFailed, node)
+			p.IsSuccess = false
+			p.NodesFailed[node] = errors[i]
 		}
 	}
 }
 
-func (p probe) IsSuccess() bool {
-	return p.NodesFailed == nil
-}
-
-func (p probe) PrintAndSendReport() {
-	if p.IsSuccess() {
-		logSuccess(p.Name, "successfully runned")
+func (p *probe) PrintAndSendReport() {
+	if p.IsSuccess {
+		logSuccess(fmt.Sprintf("%s successfully runned\n", p.Name))
 		return
 	}
 
@@ -67,8 +64,11 @@ func (p probe) PrintAndSendReport() {
 
 	errorMsg := fmt.Sprintf("%s failed", p.Name)
 
-	if len(*p.NodesFailed) != 0 {
-		errorMsg += fmt.Sprintf(" on the following nodes: %s", strings.Join(*p.NodesFailed, ", "))
+	if len(p.NodesFailed) != 0 {
+		errorMsg += " on the following nodes\n"
+		for node, err := range p.NodesFailed {
+			errorMsg += fmt.Sprintf("\t%s ->  %s\n", node, err)
+		}
 	}
 
 	// print on stdout the error
@@ -78,12 +78,12 @@ func (p probe) PrintAndSendReport() {
 
 }
 
-func logSuccess(str ...string) {
+func logSuccess(str string) {
 	fmt.Println("[SUCCESS]", str)
 }
 
-func logError(str ...string) {
-	fmt.Println("[ERROR] ", str)
+func logError(str string) {
+	fmt.Println("[ERROR]", str)
 }
 
 func init() {
@@ -122,7 +122,7 @@ func webDavTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 		return
 	}
 
-	mkdirRes.Body.Close()
+	defer mkdirRes.Body.Close()
 	if mkdirRes.StatusCode != http.StatusOK && mkdirRes.StatusCode != http.StatusCreated {
 		*e = fmt.Errorf("MKCOL calls are failing")
 		// sendStatus("degraded", "WebDAV MKCOL calls are failing")
@@ -143,9 +143,9 @@ func webDavTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 		return
 	}
 
-	uploadRes.Body.Close()
+	defer uploadRes.Body.Close()
 	if uploadRes.StatusCode != http.StatusOK && uploadRes.StatusCode != http.StatusCreated {
-		*e = fmt.Errorf("uploads are failing")
+		fmt.Printf("in web dav %s", err)
 		// sendStatus("degraded", "WebDAV uploads are failing")
 		return
 	}
@@ -199,7 +199,7 @@ var availabilityCmd = &cobra.Command{
 
 		// Define all tests
 		probeTests := [...]probe{
-			Probe("WebDAV test", user, password, webDavTest, nil),
+			Probe("WebDAV test", user, password, webDavTest, []string{"cernbox.cern.ch"}),
 			Probe("ListACLs probe", user, "", aclTest, mgmsACLs),
 			Probe("Xrdcp probe", user, "", xrdcpTest, mgmsXrdcp)}
 
