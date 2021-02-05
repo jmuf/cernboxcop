@@ -102,8 +102,8 @@ var metricsCmd = &cobra.Command{
 	Short: "CERNBox service metrics",
 }
 
-func webDavMKCOLTest(node, user, password string, e *error, wg *sync.WaitGroup) {
-	// text := "dummy text with time " + time.Now().String()
+func webDavTest(node, user, password string, e *error, wg *sync.WaitGroup) {
+	text := "dummy text with time " + time.Now().String()
 	defer wg.Done()
 	serverURL := fmt.Sprintf("https://cernbox.cern.ch/cernbox/desktop/remote.php/webdav/eos/user/%s/%s/sls", user[:1], user)
 	httpClient := &http.Client{}
@@ -126,17 +126,10 @@ func webDavMKCOLTest(node, user, password string, e *error, wg *sync.WaitGroup) 
 	if mkdirRes.StatusCode != http.StatusOK && mkdirRes.StatusCode != http.StatusCreated {
 		*e = fmt.Errorf("MKCOL calls are failing")
 		// sendStatus("degraded", "WebDAV MKCOL calls are failing")
-		//return
+		return
 	}
-}
 
-func webDavUpFileTest(node, user, password string, e *error, wg *sync.WaitGroup) {
-	defer wg.Done()
-	text := "dummy text with time " + time.Now().String()
-
-	serverURL := fmt.Sprintf("https://cernbox.cern.ch/cernbox/desktop/remote.php/webdav/eos/user/%s/%s/sls", user[:1], user)
-	httpClient := &http.Client{}
-
+	// Upload a file
 	uploadReq, err := http.NewRequest("PUT", serverURL+"/dummy.txt", strings.NewReader(text))
 	if err != nil {
 		*e = err
@@ -154,17 +147,10 @@ func webDavUpFileTest(node, user, password string, e *error, wg *sync.WaitGroup)
 	if uploadRes.StatusCode != http.StatusOK && uploadRes.StatusCode != http.StatusCreated {
 		*e = fmt.Errorf("uploads are failing")
 		// sendStatus("degraded", "WebDAV uploads are failing")
-		//return
+		return
 	}
-}
 
-func webDavDownTest(node, user, password string, e *error, wg *sync.WaitGroup) {
-	defer wg.Done()
-	text := "dummy text with time " + time.Now().String()
-
-	serverURL := fmt.Sprintf("https://cernbox.cern.ch/cernbox/desktop/remote.php/webdav/eos/user/%s/%s/sls", user[:1], user)
-	httpClient := &http.Client{}
-
+	// Download the file
 	downloadReq, err := http.NewRequest("GET", serverURL+"/dummy.txt", nil)
 	if err != nil {
 		*e = err
@@ -182,7 +168,7 @@ func webDavDownTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 	if downloadRes.StatusCode != http.StatusOK {
 		*e = fmt.Errorf("downloads are failing")
 		// sendStatus("degraded", "WebDAV downloads are failing")
-		// return
+		return
 	}
 	body, err := ioutil.ReadAll(downloadRes.Body)
 	if err != nil {
@@ -193,7 +179,7 @@ func webDavDownTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 	if string(body) != text {
 		*e = fmt.Errorf("downloads are failing")
 		// sendStatus("degraded", "WebDAV downloads are failing")
-		// return
+		return
 	}
 }
 
@@ -211,10 +197,9 @@ var availabilityCmd = &cobra.Command{
 		mgmsACLs := getProbeACLsInstances()
 		mgmsXrdcp := getProbeXrdcpInstances()
 
+		// Define all tests
 		probeTests := [...]probe{
-			Probe("WebDAV MKCOL test", user, password, webDavMKCOLTest, nil),
-			Probe("WebDAV Upload file test", user, password, webDavUpFileTest, nil),
-			Probe("WebDAV Download file test", user, password, webDavDownTest, nil),
+			Probe("WebDAV test", user, password, webDavTest, nil),
 			Probe("ListACLs probe", user, "", aclTest, mgmsACLs),
 			Probe("Xrdcp probe", user, "", xrdcpTest, mgmsXrdcp)}
 
