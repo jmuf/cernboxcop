@@ -17,6 +17,7 @@ require (
 	github.com/spf13/cobra v0.0.6
 	github.com/spf13/viper v1.6.2
 	github.com/tj/go-spin v1.1.0
+	go.etcd.io/bbolt v1.3.2
 	gopkg.in/ldap.v3 v3.1.0
 )
 

@@ -3,7 +3,6 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -57,6 +56,7 @@ func (p *probe) Run() {
 func (p *probe) PrintAndSendReport() {
 	if p.IsSuccess {
 		logSuccess(fmt.Sprintf("%s successfully runned\n", p.Name))
+		RemoveErrors(p.Name)
 		return
 	}
 
@@ -75,6 +75,7 @@ func (p *probe) PrintAndSendReport() {
 	logError(errorMsg)
 	// send error notify
 	// sendStatus("degraded", errorMsg)
+	SendStatus("degraded", p.Name, errorMsg)
 
 }
 
@@ -253,41 +254,6 @@ func xrdcpTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 			return
 		}
 	}
-}
-
-func sendStatus(status, info string) {
-	msg := map[string]interface{}{
-		"producer":         "cernbox",
-		"type":             "availability",
-		"serviceid":        "cernbox",
-		"service_status":   status,
-		"timestamp":        time.Now().Unix(),
-		"availabilitydesc": "Indicates availability of the CERNBox service and underlying EOS instances",
-		"availabilityinfo": info,
-		"contact":          "cernbox-admins@cern.ch",
-		"webpage":          "http://cern.ch/cernbox",
-	}
-
-	buf := new(bytes.Buffer)
-	if err := json.NewEncoder(buf).Encode(msg); err != nil {
-		er(err)
-	}
-	req, err := http.NewRequest("POST", "http://monit-metrics.cern.ch:10012", buf)
-	if err != nil {
-		er(err)
-	}
-	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
-
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
-		er(err)
-	}
-	if res.StatusCode != http.StatusOK {
-		fmt.Println("Uploading metrics to monit-metrics.cern.ch:10012 failed")
-	}
-
-	fmt.Printf("Availability status: %s\nInfo: %s\n", status, info)
 }
 
 var ioStatCmd = &cobra.Command{
