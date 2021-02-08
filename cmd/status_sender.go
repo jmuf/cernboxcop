@@ -15,16 +15,11 @@ var instance *bolt.DB
 var once sync.Once
 
 func getInstance() *bolt.DB {
-	if instance == nil {
 
-		once.Do(func() {
-			instance, err := bolt.Open("db.db", 0600, nil)
-			if err == nil {
-				// TODO
-			}
-		})
+	once.Do(func() {
+		instance, _ = bolt.Open("db.db", 0600, nil)
+	})
 
-	}
 	return instance
 }
 
@@ -37,17 +32,20 @@ func isAlreadySent(service, info string) bool {
 		return nil
 	})
 
+	fmt.Println("isSent", isSent)
+
 	return isSent
 }
 
 func storeInfo(service, info string) {
 	getInstance().Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists([]byte(service))
-		if err == nil {
-			return err
-		}
-		now := time.Now().Unix()
-		err = bucket.Put([]byte(info), []byte(string(now)))
+		tx.CreateBucketIfNotExists([]byte(service))
+
+		bucket := tx.Bucket([]byte(service))
+
+		now := time.Now().String()
+		err := bucket.Put([]byte(info), []byte(now))
+		fmt.Println(err)
 		if err == nil {
 			return err
 		}
