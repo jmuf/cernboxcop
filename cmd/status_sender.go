@@ -17,7 +17,7 @@ var once sync.Once
 func getInstance() *bolt.DB {
 
 	once.Do(func() {
-		instance, _ = bolt.Open("db.db", 0600, nil)
+		instance, _ = bolt.Open(getStatusSenderDB(), 0600, nil)
 	})
 
 	return instance

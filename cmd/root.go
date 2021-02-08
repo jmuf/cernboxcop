@@ -139,9 +139,8 @@ func getProbeUser() (string, string) {
 	return viper.GetString("probe_username"), viper.GetString("probe_password")
 }
 
-// TODO: to delete
-func getProbeEOSInstances() []string {
-	return viper.GetStringSlice("probe_eos_instances")
+func getStatusSenderDB() string {
+	return viper.GetString("service_status_db")
 }
 
 func getProbeACLsInstances() []string {
