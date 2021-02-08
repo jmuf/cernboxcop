@@ -32,8 +32,6 @@ func isAlreadySent(service, info string) bool {
 		return nil
 	})
 
-	fmt.Println("isSent", isSent)
-
 	return isSent
 }
 
@@ -45,7 +43,6 @@ func storeInfo(service, info string) {
 
 		now := time.Now().String()
 		err := bucket.Put([]byte(info), []byte(now))
-		fmt.Println(err)
 		if err == nil {
 			return err
 		}
@@ -102,5 +99,5 @@ func send(status, info string) {
 		fmt.Println("Uploading metrics to monit-metrics.cern.ch:10012 failed")
 	}
 
-	fmt.Printf("Availability status: %s\nInfo: %s\n", status, info)
+	// fmt.Printf("Availability status: %s\nInfo: %s\n", status, info)
 }
