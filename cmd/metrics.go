@@ -197,12 +197,15 @@ var availabilityCmd = &cobra.Command{
 
 		mgmsACLs := getProbeACLsInstances()
 		mgmsXrdcp := getProbeXrdcpInstances()
+		pathEosFuse := getProbeEosPath()
 
 		// Define all tests
 		probeTests := [...]probe{
 			Probe("WebDAV test", user, password, webDavTest, []string{"cernbox.cern.ch"}),
 			Probe("ListACLs probe", user, "", aclTest, mgmsACLs),
-			Probe("Xrdcp probe", user, "", xrdcpTest, mgmsXrdcp)}
+			Probe("Xrdcp probe", user, "", xrdcpTest, mgmsXrdcp),
+			Probe("Fuse eos probe", "", "", eosFuseTest, pathEosFuse),
+		}
 
 		// run tests
 		for _, test := range probeTests {
@@ -225,6 +228,15 @@ func aclTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 		*e = err
 		return
 	}
+}
+
+func eosFuseTest(path, user, password string, e *error, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	cmd := "ls " + path
+	cmdBash := exec.Command("/usr/bin/bash", "-c", cmd)
+	ctx, _ := context.WithTimeout(context.Background(), time.Second*30)
+	_, _, *e = execute(ctx, cmdBash)
 }
 
 func xrdcpTest(node, user, password string, e *error, wg *sync.WaitGroup) {

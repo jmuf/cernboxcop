@@ -151,6 +151,10 @@ func getProbeXrdcpInstances() []string {
 	return viper.GetStringSlice("probe_xrdcp_instances")
 }
 
+func getProbeEosPath() []string {
+	return viper.GetStringSlice("probe_eos_fuse_paths")
+}
+
 func check(err error) {
 	if err != nil {
 		//er(err)
