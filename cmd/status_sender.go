@@ -50,12 +50,15 @@ func storeInfo(service, info string) {
 	})
 }
 
-func whenStatusSent(service, err string) string {
-	var when string
+func whenStatusSent(service, err string) time.Time {
+	var when time.Time
 
 	getInstance().Batch(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(service))
-		when = string(bucket.Get([]byte(err)))
+
+		t := string(bucket.Get([]byte(err)))
+		when, _ = time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", t)
+		//when = string()
 		return nil
 	})
 
@@ -73,7 +76,7 @@ func SendStatus(status, service, err string) {
 		send(status, fmt.Sprintf("%s %s", service, err))
 	} else {
 		if verbose {
-			fmt.Println("The error status is already sent on " + whenStatusSent(service, err) + "\n")
+			fmt.Println("The error status is already sent on " + whenStatusSent(service, err).Format("2006-01-02 15:04:05") + "\n")
 		}
 	}
 }
