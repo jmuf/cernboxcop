@@ -67,13 +67,13 @@ func SendStatus(status, service, err string) {
 	// check if an email is already sent from the db
 	if !isAlreadySent(service, err) {
 		if verbose {
-			fmt.Println("Sending error status")
+			fmt.Println("Sending error status\n")
 		}
 		storeInfo(service, err)
 		send(status, fmt.Sprintf("%s %s", service, err))
 	} else {
 		if verbose {
-			fmt.Println("The error status is already sent on " + whenStatusSent(service, err))
+			fmt.Println("The error status is already sent on " + whenStatusSent(service, err) + "\n")
 		}
 	}
 }
