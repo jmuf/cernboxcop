@@ -14,6 +14,7 @@ require (
 	github.com/onsi/ginkgo v1.12.0 // indirect
 	github.com/onsi/gomega v1.9.0 // indirect
 	github.com/rs/zerolog v1.18.0
+	github.com/sirupsen/logrus v1.2.0
 	github.com/spf13/cobra v0.0.6
 	github.com/spf13/viper v1.6.2
 	github.com/tj/go-spin v1.1.0

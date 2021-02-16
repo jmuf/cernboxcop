@@ -50,12 +50,31 @@ func storeInfo(service, info string) {
 	})
 }
 
+func whenStatusSent(service, err string) string {
+	var when string
+
+	getInstance().Batch(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(service))
+		when = string(bucket.Get([]byte(err)))
+		return nil
+	})
+
+	return when
+}
+
 // SendStatus :::TODO:::
 func SendStatus(status, service, err string) {
 	// check if an email is already sent from the db
 	if !isAlreadySent(service, err) {
+		if verbose {
+			fmt.Println("Sending error status")
+		}
 		storeInfo(service, err)
 		send(status, fmt.Sprintf("%s %s", service, err))
+	} else {
+		if verbose {
+			fmt.Println("The error status is already sent on " + whenStatusSent(service, err))
+		}
 	}
 }
 

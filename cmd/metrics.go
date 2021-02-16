@@ -31,6 +31,8 @@ type probe struct {
 	IsSuccess   bool
 }
 
+var verbose bool
+
 func Probe(name string, user string, password string, probeTest probeFun, nodes []string) probe {
 	return probe{name, user, password, probeTest, nodes, make(map[string]error), true}
 }
@@ -96,6 +98,8 @@ func init() {
 	metricsCmd.AddCommand(nsStatCmd)
 	metricsCmd.AddCommand(ioStatCmd)
 	metricsCmd.AddCommand(quotaCmd)
+
+	availabilityCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 }
 
 var metricsCmd = &cobra.Command{
