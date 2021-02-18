@@ -209,10 +209,10 @@ var availabilityCmd = &cobra.Command{
 
 		// Define all tests
 		probeTests := []probe{
-			Probe("WebDAV test", user, password, webDavTest, []string{"cernbox.cern.ch"}),
-			Probe("ListACLs probe", user, "", aclTest, mgmsACLs),
-			Probe("Xrdcp probe", user, "", xrdcpTest, mgmsXrdcp),
-			Probe("Fuse eos probe", "", "", eosFuseTest, pathEosFuse),
+			Probe("WebDAV", user, password, webDavTest, []string{"cernbox.cern.ch"}),
+			Probe("ListACLs", user, "", aclTest, mgmsACLs),
+			Probe("Xrdcp", user, "", xrdcpTest, mgmsXrdcp),
+			Probe("Fuse EOS", "", "", eosFuseTest, pathEosFuse),
 		}
 
 		// run tests
