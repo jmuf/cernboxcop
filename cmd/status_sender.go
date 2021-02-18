@@ -23,71 +23,156 @@ func getInstance() *bolt.DB {
 	return instance
 }
 
-func isAlreadySent(service, info string) bool {
-	var isSent bool
+func isInList(list []string, v string) bool {
+	for _, e := range list {
+		if e == v {
+			return true
+		}
+	}
+	return false
+}
+
+func isListEquals(l1, l2 []string) bool {
+	if len(l1) != len(l2) {
+		return false
+	}
+	for _, e1 := range l1 {
+		if !isInList(l2, e1) {
+			return false
+		}
+	}
+	return true
+}
+
+func isAlreadySent(p probe) bool {
+	isSent := false
 
 	getInstance().Batch(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(service))
-		isSent = bucket != nil && bucket.Get([]byte(info)) != nil
+		if bucket := tx.Bucket([]byte("Probes")); bucket != nil {
+			info := bucket.Get([]byte(p.Name))
+
+			if info == nil {
+				isSent = p.IsSuccess
+				return nil
+			}
+
+			// reading and decoding
+			reader := bytes.NewReader(info)
+
+			var probePrevStatus map[string]interface{}
+			json.NewDecoder(reader).Decode(&probePrevStatus)
+
+			var nodes []string
+			for _, v := range probePrevStatus["nodes"].([]interface{}) {
+				nodes = append(nodes, v.(string))
+			}
+			isSent = isListEquals(nodes, p.GetListNodesFailed())
+
+		}
+
 		return nil
 	})
 
 	return isSent
 }
 
-func storeInfo(service, info string) {
-	getInstance().Update(func(tx *bolt.Tx) error {
-		tx.CreateBucketIfNotExists([]byte(service))
+func storeInfo(p probe) {
+	getInstance().Batch(func(tx *bolt.Tx) error {
+		tx.CreateBucketIfNotExists([]byte("Probes"))
 
-		bucket := tx.Bucket([]byte(service))
+		bucket := tx.Bucket([]byte("Probes"))
+		bucket.Delete([]byte(p.Name))
 
-		now := time.Now().Format(time.ANSIC)
-		err := bucket.Put([]byte(info), []byte(now))
-		if err == nil {
-			return err
+		if !p.IsSuccess {
+
+			msg := map[string]interface{}{"nodes": p.GetListNodesFailed(), "time": time.Now().Unix()}
+
+			var buf bytes.Buffer
+			json.NewEncoder(&buf).Encode(msg)
+			info := buf.Bytes()
+
+			bucket.Put([]byte(p.Name), info)
 		}
+
 		return nil
 	})
 }
 
-func whenStatusSent(service, err string) string {
-	var when string
+func generateStatusMessage(listProbes *[]probe) string {
+	return "TODO"
+}
 
-	getInstance().Batch(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(service))
-
-		when = string(bucket.Get([]byte(err)))
-		return nil
-	})
-
-	return when
+func getStatus(listProbes *[]probe) string {
+	for _, p := range *listProbes {
+		if !p.IsSuccess {
+			return "degraded"
+		}
+	}
+	return "available"
 }
 
 // SendStatus :::TODO:::
-func SendStatus(status, service, err string) {
-	// check if an email is already sent from the db
-	if !isAlreadySent(service, err) {
-		if verbose {
-			fmt.Println("Sending error status\n")
+func SendStatus(listProbes *[]probe) {
+
+	status := getStatus(listProbes)
+	info := generateStatusMessage(listProbes)
+
+	// always send metric status to CERN monitoring service
+	sendMetricStatus(status, info)
+	if verbose {
+		fmt.Printf("Sending Metric Status\n    status: %s, info: %s\n", status, info)
+	}
+
+	// send email only if not already sent in a previous run
+	sendEmail := false
+
+	for _, probe := range *listProbes {
+
+		if probe.IsSuccess {
+			removeStatus(probe.Name)
+			continue
 		}
-		storeInfo(service, err)
-		send(status, fmt.Sprintf("%s %s", service, err))
+		if isAlreadySent(probe) {
+			if verbose {
+				fmt.Printf("%s still has same issues as previous run\n", probe.Name)
+			}
+			continue
+		}
+		sendEmail = true
+	}
+
+	if sendEmail {
+		for _, p := range *listProbes {
+			storeInfo(p)
+		}
+		sendStatusEmail(info)
+
 	} else {
 		if verbose {
-			fmt.Println("The error status is already sent on " + whenStatusSent(service, err) + "\n")
+			fmt.Println("\nStatus email has been already sent")
 		}
 	}
 }
 
-// RemoveErrors :::TODO:::
-func RemoveErrors(service string) {
+func sendStatusEmail(email string) {
+	fmt.Println("Sending Emails: TODO")
+	if verbose {
+		fmt.Println("\nStatus email sent")
+	}
+}
+
+func removeStatus(probe string) {
 	getInstance().Update(func(tx *bolt.Tx) error {
-		tx.DeleteBucket([]byte(service))
+		if bucket := tx.Bucket([]byte("Probes")); bucket != nil {
+			bucket.Delete([]byte(probe))
+		}
+		// tx.DeleteBucket([]byte(service))
 		return nil
 	})
 }
 
-func send(status, info string) {
+// Sends the metric status to the CERN monitoring service
+func sendMetricStatus(status, info string) {
 	msg := map[string]interface{}{
 		"producer":         "cernbox",
 		"type":             "availability",

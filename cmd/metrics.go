@@ -37,6 +37,14 @@ func Probe(name string, user string, password string, probeTest probeFun, nodes 
 	return probe{name, user, password, probeTest, nodes, make(map[string]error), true}
 }
 
+func (p *probe) GetListNodesFailed() []string {
+	keys := []string{}
+	for key := range p.NodesFailed {
+		keys = append(keys, string(key))
+	}
+	return keys
+}
+
 func (p *probe) Run() {
 	errors := make([]error, len(p.Nodes))
 	var wg sync.WaitGroup
@@ -55,10 +63,9 @@ func (p *probe) Run() {
 	}
 }
 
-func (p *probe) PrintAndSendReport() {
+func (p *probe) PrintReport() {
 	if p.IsSuccess {
 		logSuccess(fmt.Sprintf("%s successfully runned\n", p.Name))
-		RemoveErrors(p.Name)
 		return
 	}
 
@@ -75,9 +82,6 @@ func (p *probe) PrintAndSendReport() {
 
 	// print on stdout the error
 	logError(errorMsg)
-	// send error notify
-	// sendStatus("degraded", errorMsg)
-	SendStatus("degraded", p.Name, errorMsg)
 
 }
 
@@ -204,7 +208,7 @@ var availabilityCmd = &cobra.Command{
 		pathEosFuse := getProbeEosPath()
 
 		// Define all tests
-		probeTests := [...]probe{
+		probeTests := []probe{
 			Probe("WebDAV test", user, password, webDavTest, []string{"cernbox.cern.ch"}),
 			Probe("ListACLs probe", user, "", aclTest, mgmsACLs),
 			Probe("Xrdcp probe", user, "", xrdcpTest, mgmsXrdcp),
@@ -212,10 +216,12 @@ var availabilityCmd = &cobra.Command{
 		}
 
 		// run tests
-		for _, test := range probeTests {
-			test.Run()
-			test.PrintAndSendReport()
+		for i := range probeTests {
+			probeTests[i].Run()
+			probeTests[i].PrintReport()
 		}
+
+		SendStatus(&probeTests)
 
 	},
 }
