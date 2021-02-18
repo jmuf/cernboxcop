@@ -99,7 +99,27 @@ func storeInfo(p probe) {
 }
 
 func generateStatusMessage(listProbes *[]probe) string {
-	return "TODO"
+	var info string = ""
+	for _, probe := range *listProbes {
+		info += fmt.Sprintf("%s: service ", probe.Name)
+
+		if probe.IsSuccess {
+			info += "available\n"
+		} else {
+			info += "degraded. Failed on: "
+			failedNodes := probe.GetListNodesFailed()
+			for i, n := range failedNodes {
+				info += n
+				if i == len(failedNodes)-1 {
+					info += ".\n"
+				} else {
+					info += ", "
+				}
+			}
+		}
+
+	}
+	return info
 }
 
 func getStatus(listProbes *[]probe) string {
