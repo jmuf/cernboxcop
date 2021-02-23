@@ -187,8 +187,12 @@ func sendStatusEmail(message string) {
 
 	auth := smtp.PlainAuth("", user, password, smtpHost)
 
+	headerBody := "Subject: EOS Probe: service degraded\r\n" +
+		"\r\n" +
+		message
+
 	// Sending email.
-	err := smtp.SendMail(smtpHost+":"+smtpPort, auth, from, to, []byte(message))
+	err := smtp.SendMail(smtpHost+":"+smtpPort, auth, from, to, []byte(headerBody))
 	if err != nil {
 		fmt.Println(err)
 		return
