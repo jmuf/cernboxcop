@@ -26,7 +26,7 @@ type Probe struct {
 	User        string
 	Password    string
 	Func        probeFun
-	Nodes       *[]string
+	Nodes       []string
 	NodesFailed map[string]error
 	IsSuccess   bool
 }
@@ -42,16 +42,17 @@ func (p *Probe) GetListNodesFailed() []string {
 }
 
 func (p *Probe) Run() {
-	errors := make([]error, len(*p.Nodes))
+	errors := make([]error, len(p.Nodes))
 	var wg sync.WaitGroup
 
-	for i, node := range *p.Nodes {
+	for i, node := range p.Nodes {
 		wg.Add(1)
 		go p.Func(node, p.User, p.Password, &errors[i], &wg)
 	}
 	wg.Wait()
 
-	for i, node := range *p.Nodes {
+	p.NodesFailed = make(map[string]error)
+	for i, node := range p.Nodes {
 		if errors[i] != nil {
 			p.IsSuccess = false
 			p.NodesFailed[node] = errors[i]
@@ -205,10 +206,10 @@ var availabilityCmd = &cobra.Command{
 
 		// Define all tests
 		probeTests := []*Probe{
-			&Probe{Name: "WebDav", User: user, Password: password, Func: webDavTest},
-			&Probe{Name: "ListACLs", User: user, Func: aclTest, Nodes: &mgmsACLs},
-			&Probe{Name: "Xrdcp", User: user, Func: xrdcpTest, Nodes: &mgmsXrdcp},
-			&Probe{Name: "Fuse EOS", Func: eosFuseTest, Nodes: &pathEosFuse},
+			{Name: "WebDav", User: user, Password: password, Func: webDavTest, Nodes: []string{"cernbox.cern.ch"}},
+			{Name: "ListACLs", User: user, Func: aclTest, Nodes: mgmsACLs},
+			{Name: "Xrdcp", User: user, Func: xrdcpTest, Nodes: mgmsXrdcp},
+			{Name: "Fuse EOS", Func: eosFuseTest, Nodes: pathEosFuse},
 		}
 
 		// run tests
