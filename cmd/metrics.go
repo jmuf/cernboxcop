@@ -45,6 +45,7 @@ func (p *Probe) Run() {
 	errors := make([]error, len(p.Nodes))
 	var wg sync.WaitGroup
 
+	p.IsSuccess = true
 	for i, node := range p.Nodes {
 		wg.Add(1)
 		go p.Func(node, p.User, p.Password, &errors[i], &wg)
