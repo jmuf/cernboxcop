@@ -227,7 +227,7 @@ var availabilityCmd = &cobra.Command{
 func aclTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 	defer wg.Done()
 	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", node))
-	path := fmt.Sprintf("/eos/%s/opstest/sls", strings.TrimPrefix(node, "eos"))
+	path := fmt.Sprintf("/eos/%s/opstest/sls", getFolderNameFromNode(node))
 
 	ctx := getCtx()
 
@@ -247,6 +247,15 @@ func eosFuseTest(path, user, password string, e *error, wg *sync.WaitGroup) {
 	_, _, *e = execute(ctx, cmdBash)
 }
 
+func getFolderNameFromNode(node string) string {
+	switch node {
+	case "eoshome":
+		return "home-redirector"
+	default:
+		return strings.TrimPrefix(node, "eos")
+	}
+}
+
 func xrdcpTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 	defer wg.Done()
 	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", node))
@@ -255,12 +264,12 @@ func xrdcpTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 	reader := strings.NewReader(text)
 	ctx := getCtx()
 
-	if err := eosClient.Write(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", strings.TrimPrefix(node, "eos")), ioutil.NopCloser(reader)); err != nil {
+	if err := eosClient.Write(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", getFolderNameFromNode(node)), ioutil.NopCloser(reader)); err != nil {
 		*e = err
 		return
 	}
 
-	if body, err := eosClient.Read(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", strings.TrimPrefix(node, "eos"))); err != nil {
+	if body, err := eosClient.Read(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", getFolderNameFromNode(node))); err != nil {
 		*e = err
 		return
 	} else {
