@@ -163,6 +163,10 @@ func getEmailCredentials() (string, string) {
 	return viper.GetString("email_user"), viper.GetString("email_password")
 }
 
+func getEmailSender() string {
+	return viper.GetString("email_sender")
+}
+
 func check(err error) {
 	if err != nil {
 		//er(err)

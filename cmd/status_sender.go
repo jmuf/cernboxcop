@@ -178,13 +178,14 @@ func SendStatus(listProbes *[]*Probe) {
 }
 
 func sendStatusEmail(message string) {
-	from, password := getEmailCredentials()
+	user, password := getEmailCredentials()
+	from := getEmailSender()
 	to := getEmails()
 
-	smtpHost := "smtp.cern.ch"
+	smtpHost := "cernsmtp.cern.ch"
 	smtpPort := "587"
 
-	auth := smtp.PlainAuth("", from, password, smtpHost)
+	auth := smtp.PlainAuth("", user, password, smtpHost)
 
 	// Sending email.
 	err := smtp.SendMail(smtpHost+":"+smtpPort, auth, from, to, []byte(message))
@@ -192,7 +193,11 @@ func sendStatusEmail(message string) {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println("Email Sent Successfully!")
+	if verbose {
+		fmt.Println("Email Sent Successfully!")
+		fmt.Printf("TO: %v\n", to)
+		fmt.Printf("BODY:\n%v\n", message)
+	}
 }
 
 func removeStatus(probe string) {
