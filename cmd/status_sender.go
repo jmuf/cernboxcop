@@ -143,7 +143,7 @@ func SendStatus(listProbes *[]*Probe) {
 	// always send metric status to CERN monitoring service
 	sendMetricStatus(status, info)
 	if verbose {
-		fmt.Printf("Sending Metric Status\n    status: %s, info: %s\n", status, info)
+		fmt.Printf("Sending Metric Status:\n\n%s, info: %s\n", status, info)
 	}
 
 	// send email only if not already sent in a previous run
