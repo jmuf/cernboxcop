@@ -14,6 +14,13 @@ import (
 var instance *bolt.DB
 var once sync.Once
 
+const failedProbesBucket = "FailedProbes"
+
+type failedProbe struct {
+	Nodes []string
+	Time  time.Time
+}
+
 func getInstance() *bolt.DB {
 
 	once.Do(func() {
@@ -48,25 +55,19 @@ func isAlreadySent(p *Probe) bool {
 	isSent := false
 
 	getInstance().Batch(func(tx *bolt.Tx) error {
-		if bucket := tx.Bucket([]byte("Probes")); bucket != nil {
-			info := bucket.Get([]byte(p.Name))
+		if bucket := tx.Bucket([]byte(failedProbesBucket)); bucket != nil {
+			pJSON := bucket.Get([]byte(p.Name))
 
-			if info == nil {
+			if pJSON == nil {
 				isSent = p.IsSuccess
 				return nil
 			}
-
-			// reading and decoding
-			reader := bytes.NewReader(info)
-
-			var probePrevStatus map[string]interface{}
-			json.NewDecoder(reader).Decode(&probePrevStatus)
-
-			var nodes []string
-			for _, v := range probePrevStatus["nodes"].([]interface{}) {
-				nodes = append(nodes, v.(string))
+			probeFailed := new(failedProbe)
+			err := json.Unmarshal(pJSON, probeFailed)
+			if err != nil {
+				return err
 			}
-			isSent = isListEquals(nodes, p.GetListNodesFailed())
+			isSent = isListEquals(probeFailed.Nodes, p.GetListNodesFailed())
 
 		}
 
@@ -78,20 +79,21 @@ func isAlreadySent(p *Probe) bool {
 
 func storeInfo(p Probe) {
 	getInstance().Batch(func(tx *bolt.Tx) error {
-		tx.CreateBucketIfNotExists([]byte("Probes"))
+		tx.CreateBucketIfNotExists([]byte(failedProbesBucket))
 
-		bucket := tx.Bucket([]byte("Probes"))
+		bucket := tx.Bucket([]byte(failedProbesBucket))
 		bucket.Delete([]byte(p.Name))
 
 		if !p.IsSuccess {
 
-			msg := map[string]interface{}{"nodes": p.GetListNodesFailed(), "time": time.Now().Unix()}
+			fProbe := failedProbe{Nodes: p.GetListNodesFailed(), Time: time.Now()}
 
-			var buf bytes.Buffer
-			json.NewEncoder(&buf).Encode(msg)
-			info := buf.Bytes()
+			pJSON, err := json.Marshal(fProbe)
+			if err != nil {
+				return err
+			}
 
-			bucket.Put([]byte(p.Name), info)
+			bucket.Put([]byte(p.Name), pJSON)
 		}
 
 		return nil
@@ -183,7 +185,7 @@ func sendStatusEmail(email string) {
 
 func removeStatus(probe string) {
 	getInstance().Update(func(tx *bolt.Tx) error {
-		if bucket := tx.Bucket([]byte("Probes")); bucket != nil {
+		if bucket := tx.Bucket([]byte(failedProbesBucket)); bucket != nil {
 			bucket.Delete([]byte(probe))
 		}
 		// tx.DeleteBucket([]byte(service))
