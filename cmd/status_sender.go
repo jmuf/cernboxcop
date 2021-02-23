@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/smtp"
 	"sync"
 	"time"
 
@@ -176,11 +177,22 @@ func SendStatus(listProbes *[]*Probe) {
 	}
 }
 
-func sendStatusEmail(email string) {
-	fmt.Println("Sending Emails: TODO")
-	if verbose {
-		fmt.Println("\nStatus email sent")
+func sendStatusEmail(message string) {
+	from, password := getEmailCredentials()
+	to := getEmails()
+
+	smtpHost := "smtp.cern.ch"
+	smtpPort := "587"
+
+	auth := smtp.PlainAuth("", from, password, smtpHost)
+
+	// Sending email.
+	err := smtp.SendMail(smtpHost+":"+smtpPort, auth, from, to, []byte(message))
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
+	fmt.Println("Email Sent Successfully!")
 }
 
 func removeStatus(probe string) {

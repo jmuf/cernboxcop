@@ -155,6 +155,14 @@ func getProbeEosPath() []string {
 	return viper.GetStringSlice("probe_eos_fuse_paths")
 }
 
+func getEmails() []string {
+	return viper.GetStringSlice("probe_emails")
+}
+
+func getEmailCredentials() (string, string) {
+	return viper.GetString("email_user"), viper.GetString("email_password")
+}
+
 func check(err error) {
 	if err != nil {
 		//er(err)
