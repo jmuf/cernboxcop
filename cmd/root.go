@@ -139,8 +139,39 @@ func getProbeUser() (string, string) {
 	return viper.GetString("probe_username"), viper.GetString("probe_password")
 }
 
-func getProbeEOSInstances() []string {
-	return viper.GetStringSlice("probe_eos_instances")
+func getStatusSenderDB() string {
+	return viper.GetString("service_status_db")
+}
+
+func getProbeACLsInstances() []string {
+	return viper.GetStringSlice("probe_acls_instances")
+}
+
+func getProbeXrdcpInstances() []string {
+	return viper.GetStringSlice("probe_xrdcp_instances")
+}
+
+func getProbeEosPath() []string {
+	return viper.GetStringSlice("probe_eos_fuse_paths")
+}
+
+func getEmails() []string {
+	return viper.GetStringSlice("probe_emails")
+}
+
+func getEmailCredentials() (string, string) {
+	return viper.GetString("email_user"), viper.GetString("email_password")
+}
+
+func getEmailSender() string {
+	return viper.GetString("email_sender")
+}
+
+func check(err error) {
+	if err != nil {
+		//er(err)
+		fmt.Println("Error:", err)
+	}
 }
 
 func saveWith(file string, data []byte) {

@@ -3,10 +3,8 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/spf13/viper"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -16,8 +14,90 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spf13/viper"
+
 	"github.com/spf13/cobra"
 )
+
+type probeFun func(string, string, string, *error, *sync.WaitGroup)
+
+// Probe represents a test probe, specified by `probeFun` function,
+// and executed on all the nodes in `Nodes` list.
+// After run it, the map `NodesFailed` will hold all the nodes eventualy failed
+// with the correspondig error
+type Probe struct {
+	Name        string
+	User        string
+	Password    string
+	Func        probeFun
+	Nodes       []string
+	NodesFailed map[string]error
+	IsSuccess   bool
+}
+
+var verbose bool
+
+// GetListNodesFailed gets the list of all failed nodes
+// (Call it after Run execution)
+func (p *Probe) GetListNodesFailed() []string {
+	keys := []string{}
+	for key := range p.NodesFailed {
+		keys = append(keys, string(key))
+	}
+	return keys
+}
+
+// Run executes the probe test for all the nodes in `Nodes` list
+func (p *Probe) Run() {
+	errors := make([]error, len(p.Nodes))
+	var wg sync.WaitGroup
+
+	p.IsSuccess = true
+	for i, node := range p.Nodes {
+		wg.Add(1)
+		go p.Func(node, p.User, p.Password, &errors[i], &wg)
+	}
+	wg.Wait()
+
+	p.NodesFailed = make(map[string]error)
+	for i, node := range p.Nodes {
+		if errors[i] != nil {
+			p.IsSuccess = false
+			p.NodesFailed[node] = errors[i]
+		}
+	}
+}
+
+// PrintReport prints a report of the probe
+func (p *Probe) PrintReport() {
+	if p.IsSuccess {
+		logSuccess(fmt.Sprintf("%s successfully runned\n", p.Name))
+		return
+	}
+
+	// some errors in the test
+
+	errorMsg := fmt.Sprintf("%s failed", p.Name)
+
+	if len(p.NodesFailed) != 0 {
+		errorMsg += " on the following nodes\n"
+		for node, err := range p.NodesFailed {
+			errorMsg += fmt.Sprintf("\t%s ->  %s\n", node, err)
+		}
+	}
+
+	// print on stdout the error
+	logError(errorMsg)
+
+}
+
+func logSuccess(str string) {
+	fmt.Println("[SUCCESS]", str)
+}
+
+func logError(str string) {
+	fmt.Println("[ERROR]", str)
+}
 
 func init() {
 	//	nsStatCmd.Flags().StringP("carbon-server", "c", "filer-carbon.cern.ch:2003", "graphite server")
@@ -28,6 +108,8 @@ func init() {
 	metricsCmd.AddCommand(nsStatCmd)
 	metricsCmd.AddCommand(ioStatCmd)
 	metricsCmd.AddCommand(quotaCmd)
+
+	availabilityCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 }
 
 var metricsCmd = &cobra.Command{
@@ -35,121 +117,167 @@ var metricsCmd = &cobra.Command{
 	Short: "CERNBox service metrics",
 }
 
+func webDavTest(node, user, password string, e *error, wg *sync.WaitGroup) {
+	text := "dummy text with time " + time.Now().String()
+	defer wg.Done()
+	serverURL := fmt.Sprintf("https://cernbox.cern.ch/cernbox/desktop/remote.php/webdav/eos/user/%s/%s/sls", user[:1], user)
+	httpClient := &http.Client{}
+
+	// Create the remote folder
+	mkdirReq, err := http.NewRequest("MKCOL", serverURL, nil)
+	if err != nil {
+		*e = err
+		return
+	}
+
+	mkdirReq.SetBasicAuth(user, password)
+	mkdirRes, err := httpClient.Do(mkdirReq)
+	if err != nil {
+		*e = err
+		return
+	}
+
+	defer mkdirRes.Body.Close()
+	if mkdirRes.StatusCode != http.StatusOK && mkdirRes.StatusCode != http.StatusCreated {
+		*e = fmt.Errorf("MKCOL calls are failing")
+		// sendStatus("degraded", "WebDAV MKCOL calls are failing")
+		return
+	}
+
+	// Upload a file
+	uploadReq, err := http.NewRequest("PUT", serverURL+"/dummy.txt", strings.NewReader(text))
+	if err != nil {
+		*e = err
+		return
+	}
+
+	uploadReq.SetBasicAuth(user, password)
+	uploadRes, err := httpClient.Do(uploadReq)
+	if err != nil {
+		*e = err
+		return
+	}
+
+	defer uploadRes.Body.Close()
+	if uploadRes.StatusCode != http.StatusOK && uploadRes.StatusCode != http.StatusCreated {
+		fmt.Printf("in web dav %s", err)
+		// sendStatus("degraded", "WebDAV uploads are failing")
+		return
+	}
+
+	// Download the file
+	downloadReq, err := http.NewRequest("GET", serverURL+"/dummy.txt", nil)
+	if err != nil {
+		*e = err
+		return
+	}
+
+	downloadReq.SetBasicAuth(user, password)
+	downloadRes, err := httpClient.Do(downloadReq)
+	if err != nil {
+		*e = err
+		return
+	}
+
+	defer downloadRes.Body.Close()
+	if downloadRes.StatusCode != http.StatusOK {
+		*e = fmt.Errorf("downloads are failing")
+		// sendStatus("degraded", "WebDAV downloads are failing")
+		return
+	}
+	body, err := ioutil.ReadAll(downloadRes.Body)
+	if err != nil {
+		*e = err
+		return
+	}
+
+	if string(body) != text {
+		*e = fmt.Errorf("downloads are failing")
+		// sendStatus("degraded", "WebDAV downloads are failing")
+		return
+	}
+}
+
 var availabilityCmd = &cobra.Command{
 	Use:   "availability",
 	Short: "Checks the CERNBox HTTP service and EOS instances for availability",
 	Run: func(cmd *cobra.Command, args []string) {
 
-		text := "dummy text with time " + time.Now().String()
-
+		// initialization
 		user, password := getProbeUser()
 		if user == "" || password == "" {
 			er("please set probe_user and probe_password in the config")
 		}
 
-		serverURL := fmt.Sprintf("https://cernbox.cern.ch/cernbox/desktop/remote.php/webdav/eos/user/%s/%s/sls", user[:1], user)
-		httpClient := &http.Client{}
+		mgmsACLs := getProbeACLsInstances()
+		mgmsXrdcp := getProbeXrdcpInstances()
+		pathEosFuse := getProbeEosPath()
 
-		// Create the remote folder
-		mkdirReq, err := http.NewRequest("MKCOL", serverURL, nil)
-		if err != nil {
-			er(err)
-		}
-		mkdirReq.SetBasicAuth(user, password)
-		mkdirRes, err := httpClient.Do(mkdirReq)
-		if err != nil {
-			er(err)
-		}
-		mkdirRes.Body.Close()
-		if mkdirRes.StatusCode != http.StatusOK && mkdirRes.StatusCode != http.StatusCreated {
-			sendStatus("degraded", "WebDAV MKCOL calls are failing")
-			return
+		// Define all tests
+		probeTests := []*Probe{
+			{Name: "WebDav", User: user, Password: password, Func: webDavTest, Nodes: []string{"cernbox.cern.ch"}},
+			{Name: "ListACLs", User: user, Func: aclTest, Nodes: mgmsACLs},
+			{Name: "Xrdcp", User: user, Func: xrdcpTest, Nodes: mgmsXrdcp},
+			{Name: "Fuse EOS", Func: eosFuseTest, Nodes: pathEosFuse},
 		}
 
-		// Upload file to OC server
-		uploadReq, err := http.NewRequest("PUT", serverURL+"/dummy.txt", strings.NewReader(text))
-		if err != nil {
-			er(err)
-		}
-		uploadReq.SetBasicAuth(user, password)
-		uploadRes, err := httpClient.Do(uploadReq)
-		if err != nil {
-			er(err)
-		}
-		uploadRes.Body.Close()
-		if uploadRes.StatusCode != http.StatusOK && uploadRes.StatusCode != http.StatusCreated {
-			sendStatus("degraded", "WebDAV uploads are failing")
-			return
+		// run tests
+		for _, probe := range probeTests {
+			probe.Run()
+			probe.PrintReport()
 		}
 
-		// Download the file
-		downloadReq, err := http.NewRequest("GET", serverURL+"/dummy.txt", nil)
-		if err != nil {
-			er(err)
-		}
-		downloadReq.SetBasicAuth(user, password)
-		downloadRes, err := httpClient.Do(downloadReq)
-		if err != nil {
-			er(err)
-		}
-		defer downloadRes.Body.Close()
-		if downloadRes.StatusCode != http.StatusOK {
-			sendStatus("degraded", "WebDAV downloads are failing")
-			return
-		}
-		body, err := ioutil.ReadAll(downloadRes.Body)
-		if err != nil {
-			er(err)
-		}
-		if string(body) != text {
-			sendStatus("degraded", "WebDAV downloads are failing")
-			return
-		}
-
-		info := "WebDAV and xrdcopy transfers fully operational"
-		status := "available"
-
-		mgms := getProbeEOSInstances()
-		var failedMGMs []string
-		errors := make([]error, len(mgms))
-		var wg sync.WaitGroup
-
-		for i, m := range mgms {
-			wg.Add(1)
-			go xrdcpTest(m, user, &errors[i], &wg)
-		}
-		wg.Wait()
-
-		for i := range mgms {
-			if errors[i] != nil {
-				failedMGMs = append(failedMGMs, mgms[i])
-			}
-		}
-
-		if len(failedMGMs) > 0 {
-			status = "degraded"
-			info = "WebDAV transfers fully operational; xrdcopy tests failing on MGMs: " + strings.Join(failedMGMs, ", ")
-		}
-
-		sendStatus(status, info)
+		SendStatus(probeTests)
 
 	},
 }
 
-func xrdcpTest(mgm, user string, e *error, wg *sync.WaitGroup) {
+func aclTest(node, user, password string, e *error, wg *sync.WaitGroup) {
 	defer wg.Done()
-	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", mgm))
+	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", node))
+	path := fmt.Sprintf("/eos/%s/opstest/sls", getFolderNameFromNode(node))
+
+	ctx := getCtx()
+
+	_, err := eosClient.ListACLs(ctx, user, path)
+	if err != nil {
+		*e = err
+		return
+	}
+}
+
+func eosFuseTest(path, user, password string, e *error, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	cmd := "ls " + path
+	cmdBash := exec.Command("/usr/bin/bash", "-c", cmd)
+	ctx, _ := context.WithTimeout(context.Background(), time.Second*30)
+	_, _, *e = execute(ctx, cmdBash)
+}
+
+func getFolderNameFromNode(node string) string {
+	switch node {
+	case "eoshome":
+		return "home-redirector"
+	default:
+		return strings.TrimPrefix(node, "eos")
+	}
+}
+
+func xrdcpTest(node, user, password string, e *error, wg *sync.WaitGroup) {
+	defer wg.Done()
+	eosClient := getEOS(fmt.Sprintf("root://%s.cern.ch", node))
 
 	text := "dummy text with time " + time.Now().String()
 	reader := strings.NewReader(text)
 	ctx := getCtx()
 
-	if err := eosClient.Write(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", strings.TrimPrefix(mgm, "eos")), ioutil.NopCloser(reader)); err != nil {
+	if err := eosClient.Write(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", getFolderNameFromNode(node)), ioutil.NopCloser(reader)); err != nil {
 		*e = err
 		return
 	}
 
-	if body, err := eosClient.Read(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", strings.TrimPrefix(mgm, "eos"))); err != nil {
+	if body, err := eosClient.Read(ctx, user, fmt.Sprintf("/eos/%s/opstest/sls/dummy.txt", getFolderNameFromNode(node))); err != nil {
 		*e = err
 		return
 	} else {
@@ -163,41 +291,6 @@ func xrdcpTest(mgm, user string, e *error, wg *sync.WaitGroup) {
 			return
 		}
 	}
-}
-
-func sendStatus(status, info string) {
-	msg := map[string]interface{}{
-		"producer":         "cernbox",
-		"type":             "availability",
-		"serviceid":        "cernbox",
-		"service_status":   status,
-		"timestamp":        time.Now().Unix(),
-		"availabilitydesc": "Indicates availability of the CERNBox service and underlying EOS instances",
-		"availabilityinfo": info,
-		"contact":          "cernbox-admins@cern.ch",
-		"webpage":          "http://cern.ch/cernbox",
-	}
-
-	buf := new(bytes.Buffer)
-	if err := json.NewEncoder(buf).Encode(msg); err != nil {
-		er(err)
-	}
-	req, err := http.NewRequest("POST", "http://monit-metrics.cern.ch:10012", buf)
-	if err != nil {
-		er(err)
-	}
-	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
-
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
-		er(err)
-	}
-	if res.StatusCode != http.StatusOK {
-		fmt.Println("Uploading metrics to monit-metrics.cern.ch:10012 failed")
-	}
-
-	fmt.Printf("Availability status: %s\nInfo: %s\n", status, info)
 }
 
 var ioStatCmd = &cobra.Command{
