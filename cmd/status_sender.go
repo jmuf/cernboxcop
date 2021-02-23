@@ -101,9 +101,9 @@ func storeInfo(p Probe) {
 	})
 }
 
-func generateStatusMessage(listProbes *[]*Probe) string {
+func generateStatusMessage(listProbes []*Probe) string {
 	var info string = ""
-	for _, probe := range *listProbes {
+	for _, probe := range listProbes {
 		info += fmt.Sprintf("%s: service ", probe.Name)
 
 		if probe.IsSuccess {
@@ -125,8 +125,8 @@ func generateStatusMessage(listProbes *[]*Probe) string {
 	return info
 }
 
-func getStatus(listProbes *[]*Probe) string {
-	for _, p := range *listProbes {
+func getStatus(listProbes []*Probe) string {
+	for _, p := range listProbes {
 		if !p.IsSuccess {
 			return "degraded"
 		}
@@ -135,7 +135,7 @@ func getStatus(listProbes *[]*Probe) string {
 }
 
 // SendStatus :::TODO:::
-func SendStatus(listProbes *[]*Probe) {
+func SendStatus(listProbes []*Probe) {
 
 	status := getStatus(listProbes)
 	info := generateStatusMessage(listProbes)
@@ -149,7 +149,7 @@ func SendStatus(listProbes *[]*Probe) {
 	// send email only if not already sent in a previous run
 	sendEmail := false
 
-	for _, probe := range *listProbes {
+	for _, probe := range listProbes {
 
 		if probe.IsSuccess {
 			removeStatus(probe.Name)
@@ -165,7 +165,7 @@ func SendStatus(listProbes *[]*Probe) {
 	}
 
 	if sendEmail {
-		for _, p := range *listProbes {
+		for _, p := range listProbes {
 			storeInfo(*p)
 		}
 		sendStatusEmail(info)

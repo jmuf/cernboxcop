@@ -219,7 +219,7 @@ var availabilityCmd = &cobra.Command{
 			probe.PrintReport()
 		}
 
-		SendStatus(&probeTests)
+		SendStatus(probeTests)
 
 	},
 }
