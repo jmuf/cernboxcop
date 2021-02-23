@@ -44,7 +44,7 @@ func isListEquals(l1, l2 []string) bool {
 	return true
 }
 
-func isAlreadySent(p probe) bool {
+func isAlreadySent(p *Probe) bool {
 	isSent := false
 
 	getInstance().Batch(func(tx *bolt.Tx) error {
@@ -76,7 +76,7 @@ func isAlreadySent(p probe) bool {
 	return isSent
 }
 
-func storeInfo(p probe) {
+func storeInfo(p Probe) {
 	getInstance().Batch(func(tx *bolt.Tx) error {
 		tx.CreateBucketIfNotExists([]byte("Probes"))
 
@@ -98,7 +98,7 @@ func storeInfo(p probe) {
 	})
 }
 
-func generateStatusMessage(listProbes *[]probe) string {
+func generateStatusMessage(listProbes *[]*Probe) string {
 	var info string = ""
 	for _, probe := range *listProbes {
 		info += fmt.Sprintf("%s: service ", probe.Name)
@@ -122,7 +122,7 @@ func generateStatusMessage(listProbes *[]probe) string {
 	return info
 }
 
-func getStatus(listProbes *[]probe) string {
+func getStatus(listProbes *[]*Probe) string {
 	for _, p := range *listProbes {
 		if !p.IsSuccess {
 			return "degraded"
@@ -132,7 +132,7 @@ func getStatus(listProbes *[]probe) string {
 }
 
 // SendStatus :::TODO:::
-func SendStatus(listProbes *[]probe) {
+func SendStatus(listProbes *[]*Probe) {
 
 	status := getStatus(listProbes)
 	info := generateStatusMessage(listProbes)
@@ -163,7 +163,7 @@ func SendStatus(listProbes *[]probe) {
 
 	if sendEmail {
 		for _, p := range *listProbes {
-			storeInfo(p)
+			storeInfo(*p)
 		}
 		sendStatusEmail(info)
 

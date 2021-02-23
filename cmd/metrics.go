@@ -21,23 +21,19 @@ import (
 
 type probeFun func(string, string, string, *error, *sync.WaitGroup)
 
-type probe struct {
+type Probe struct {
 	Name        string
 	User        string
 	Password    string
 	Func        probeFun
-	Nodes       []string
+	Nodes       *[]string
 	NodesFailed map[string]error
 	IsSuccess   bool
 }
 
 var verbose bool
 
-func Probe(name string, user string, password string, probeTest probeFun, nodes []string) probe {
-	return probe{name, user, password, probeTest, nodes, make(map[string]error), true}
-}
-
-func (p *probe) GetListNodesFailed() []string {
+func (p *Probe) GetListNodesFailed() []string {
 	keys := []string{}
 	for key := range p.NodesFailed {
 		keys = append(keys, string(key))
@@ -45,17 +41,17 @@ func (p *probe) GetListNodesFailed() []string {
 	return keys
 }
 
-func (p *probe) Run() {
-	errors := make([]error, len(p.Nodes))
+func (p *Probe) Run() {
+	errors := make([]error, len(*p.Nodes))
 	var wg sync.WaitGroup
 
-	for i, node := range p.Nodes {
+	for i, node := range *p.Nodes {
 		wg.Add(1)
 		go p.Func(node, p.User, p.Password, &errors[i], &wg)
 	}
 	wg.Wait()
 
-	for i, node := range p.Nodes {
+	for i, node := range *p.Nodes {
 		if errors[i] != nil {
 			p.IsSuccess = false
 			p.NodesFailed[node] = errors[i]
@@ -63,7 +59,7 @@ func (p *probe) Run() {
 	}
 }
 
-func (p *probe) PrintReport() {
+func (p *Probe) PrintReport() {
 	if p.IsSuccess {
 		logSuccess(fmt.Sprintf("%s successfully runned\n", p.Name))
 		return
@@ -208,17 +204,17 @@ var availabilityCmd = &cobra.Command{
 		pathEosFuse := getProbeEosPath()
 
 		// Define all tests
-		probeTests := []probe{
-			Probe("WebDAV", user, password, webDavTest, []string{"cernbox.cern.ch"}),
-			Probe("ListACLs", user, "", aclTest, mgmsACLs),
-			Probe("Xrdcp", user, "", xrdcpTest, mgmsXrdcp),
-			Probe("Fuse EOS", "", "", eosFuseTest, pathEosFuse),
+		probeTests := []*Probe{
+			&Probe{Name: "WebDav", User: user, Password: password, Func: webDavTest},
+			&Probe{Name: "ListACLs", User: user, Func: aclTest, Nodes: &mgmsACLs},
+			&Probe{Name: "Xrdcp", User: user, Func: xrdcpTest, Nodes: &mgmsXrdcp},
+			&Probe{Name: "Fuse EOS", Func: eosFuseTest, Nodes: &pathEosFuse},
 		}
 
 		// run tests
-		for i := range probeTests {
-			probeTests[i].Run()
-			probeTests[i].PrintReport()
+		for _, probe := range probeTests {
+			probe.Run()
+			probe.PrintReport()
 		}
 
 		SendStatus(&probeTests)
