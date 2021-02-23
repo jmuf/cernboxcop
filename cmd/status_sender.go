@@ -12,6 +12,17 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
+// DB is a key-value store implemented using bbolt library
+// It is used to implement the anti-spam filter for email status sending
+//
+// Actually, it contains a single bucket, "FailedProbes", that contains key-value pairs,
+// in which each key is the probe's name and the value is an instance of "failedProbe" struct.
+//
+// EX.
+// "probe1" -> {Nodes: ['node1', 'node2'], Time: <yesterday>}
+// "probe2" -> {Nodes: ['node3'], Time: <today>}
+
+// instance of bolt DB, never use it directly (use getInstance() method)
 var instance *bolt.DB
 var once sync.Once
 
@@ -22,6 +33,7 @@ type failedProbe struct {
 	Time  time.Time
 }
 
+// Get the singleton instance of DB
 func getInstance() *bolt.DB {
 
 	once.Do(func() {
@@ -52,6 +64,7 @@ func isListEquals(l1, l2 []string) bool {
 	return true
 }
 
+// isAlreadySent returns true if the status of the probe p is already sent in a previous run of the probe
 func isAlreadySent(p *Probe) bool {
 	isSent := false
 
@@ -78,6 +91,7 @@ func isAlreadySent(p *Probe) bool {
 	return isSent
 }
 
+// storeInfo stores the probe status in the DB
 func storeInfo(p Probe) {
 	getInstance().Batch(func(tx *bolt.Tx) error {
 		tx.CreateBucketIfNotExists([]byte(failedProbesBucket))
@@ -101,6 +115,7 @@ func storeInfo(p Probe) {
 	})
 }
 
+// Generate a nice status message for al the probes
 func generateStatusMessage(listProbes []*Probe) string {
 	var info string = ""
 	for _, probe := range listProbes {
@@ -134,7 +149,8 @@ func getStatus(listProbes []*Probe) string {
 	return "available"
 }
 
-// SendStatus :::TODO:::
+// SendStatus sends always the status to the CERN monitoring service (both if the service is "degraded" and "available")
+// but only sends email if not sent before
 func SendStatus(listProbes []*Probe) {
 
 	status := getStatus(listProbes)
@@ -177,6 +193,7 @@ func SendStatus(listProbes []*Probe) {
 	}
 }
 
+// sendStatusEmail sends the status email to all emails specified in the config file
 func sendStatusEmail(message string) {
 	user, password := getEmailCredentials()
 	from := getEmailSender()
@@ -204,6 +221,7 @@ func sendStatusEmail(message string) {
 	}
 }
 
+// Removes status for the probe
 func removeStatus(probe string) {
 	getInstance().Update(func(tx *bolt.Tx) error {
 		if bucket := tx.Bucket([]byte(failedProbesBucket)); bucket != nil {

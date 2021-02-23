@@ -21,6 +21,10 @@ import (
 
 type probeFun func(string, string, string, *error, *sync.WaitGroup)
 
+// Probe represents a test probe, specified by `probeFun` function,
+// and executed on all the nodes in `Nodes` list.
+// After run it, the map `NodesFailed` will hold all the nodes eventualy failed
+// with the correspondig error
 type Probe struct {
 	Name        string
 	User        string
@@ -33,6 +37,8 @@ type Probe struct {
 
 var verbose bool
 
+// GetListNodesFailed gets the list of all failed nodes
+// (Call it after Run execution)
 func (p *Probe) GetListNodesFailed() []string {
 	keys := []string{}
 	for key := range p.NodesFailed {
@@ -41,6 +47,7 @@ func (p *Probe) GetListNodesFailed() []string {
 	return keys
 }
 
+// Run executes the probe test for all the nodes in `Nodes` list
 func (p *Probe) Run() {
 	errors := make([]error, len(p.Nodes))
 	var wg sync.WaitGroup
@@ -61,6 +68,7 @@ func (p *Probe) Run() {
 	}
 }
 
+// PrintReport prints a report of the probe
 func (p *Probe) PrintReport() {
 	if p.IsSuccess {
 		logSuccess(fmt.Sprintf("%s successfully runned\n", p.Name))
