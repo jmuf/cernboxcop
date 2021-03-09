@@ -663,7 +663,7 @@ var getCharging = func(infos []*projectInfo, concurrency int) map[string]*charge
 
 	var throttle = make(chan int, 1)
 	var wg sync.WaitGroup
-	url := "https://accounting-receiver.cern.ch/v2/"
+	url := "https://gar.cern.ch/user_resolver/batch_resolve/"
 	s := spin.New()
 	counter := uint64(0)
 	totalAccounts := len(accounts)
